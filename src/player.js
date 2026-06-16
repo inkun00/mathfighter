@@ -85,23 +85,6 @@ function getSlotAngleOffset(slotIndex, slotCount) {
   return offsets[slotIndex] || 0;
 }
 
-function getCombatEquippedWeapons() {
-  const stateWeapons = getEquippedWeapons();
-
-  try {
-    const rawSave = localStorage.getItem('math_fighter_save');
-    const saved = rawSave ? JSON.parse(rawSave) : null;
-    const savedIds = Array.isArray(saved?.equippedWeaponIds) ? saved.equippedWeaponIds.map(Number) : [];
-    const savedWeapons = savedIds
-      .map(id => WEAPONS_DB.find(weapon => weapon.id === id))
-      .filter(Boolean)
-      .slice(0, 3);
-
-    return savedWeapons.length > stateWeapons.length ? savedWeapons : stateWeapons;
-  } catch (error) {
-    return stateWeapons;
-  }
-}
 
 // Projectile Class representing weapons bullet/slashes in action
 export class Projectile {
@@ -142,6 +125,8 @@ export class Projectile {
       this.player = player;
       this.id = weapon.id;
       this.statusEffect = getWeaponStatusEffect(weapon.id);
+      this.isParabolic = Boolean(weapon.name && weapon.name.includes("투척기"));
+      this.z = 0;
 
       // Homing setup
       this.targetMonster = null;
@@ -179,7 +164,7 @@ export class Projectile {
   update(monsters, playerPos) {
     try {
       const elapsed = Date.now() - this.createdTime;
-      if (elapsed > this.lifeTime) {
+      if (this.behavior !== 'mine' && elapsed > this.lifeTime) {
         this.isDead = true;
         return;
       }
@@ -214,6 +199,7 @@ export class Projectile {
         });
 
         if (closest) {
+          this.targetMonster = closest;
           const dx = closest.x - this.x;
           const dy = closest.y - this.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -254,6 +240,12 @@ export class Projectile {
       const traveledX = this.x - this.startX;
       const traveledY = this.y - this.startY;
       const traveled = Math.sqrt(traveledX * traveledX + traveledY * traveledY);
+      
+      if (this.isParabolic) {
+        const progress = Math.min(1, traveled / this.maxRange);
+        this.z = Math.sin(progress * Math.PI) * 110; // 110px peak height
+      }
+
       if (traveled >= this.maxRange) {
         if (this.behavior === 'boomerang' && !this.isReturning) {
           this.isReturning = true;
@@ -279,6 +271,8 @@ export class Projectile {
     this.lifeTime = this.id >= 22 ? 5200 : 4200;
     this.createdTime = Date.now();
     this.angle = 0;
+    this.z = 0;
+    this.isParabolic = false;
   }
 
   canApplyAreaTick(now) {
@@ -288,8 +282,89 @@ export class Projectile {
   }
 
   draw(ctx) {
+    // Tesla Fusion Gun (ID 23) special lightning drawing: Character's body to target monster
+    if (this.id === 23) {
+      if (!this.player) return;
+      ctx.save();
+      
+      const startX = this.player.x;
+      const startY = this.player.y;
+      const targetX = (this.targetMonster && this.targetMonster.hp > 0) ? this.targetMonster.x : this.x;
+      const targetY = (this.targetMonster && this.targetMonster.hp > 0) ? this.targetMonster.y : this.y;
+      
+      const drawLightningArc = (x1, y1, x2, y2, displace, thick, color) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = thick;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const steps = Math.max(3, Math.floor(dist / 14));
+        
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps;
+          let px = x1 + dx * t;
+          let py = y1 + dy * t;
+          
+          const nx = -dy / (dist || 1);
+          const ny = dx / (dist || 1);
+          const offset = (Math.random() - 0.5) * displace;
+          
+          px += nx * offset;
+          py += ny * offset;
+          ctx.lineTo(px, py);
+        }
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      };
+      
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      // Outer glow blue aura
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = '#00f6ff';
+      drawLightningArc(startX, startY, targetX, targetY, 16, 4.8, 'rgba(0, 212, 255, 0.45)');
+      
+      // Middle cyan glow
+      ctx.shadowBlur = 0;
+      drawLightningArc(startX, startY, targetX, targetY, 11, 2.6, 'rgba(172, 246, 255, 0.8)');
+      
+      // Core white lightning bolt
+      drawLightningArc(startX, startY, targetX, targetY, 7, 1.2, '#ffffff');
+
+      // Static discharges around target
+      const sparkCount = 3 + Math.floor(Math.random() * 3);
+      for (let s = 0; s < sparkCount; s++) {
+        const angle = Math.random() * Math.PI * 2;
+        const sparkLen = 9 + Math.random() * 15;
+        const sx = targetX + Math.cos(angle) * sparkLen;
+        const sy = targetY + Math.sin(angle) * sparkLen;
+        drawLightningArc(targetX, targetY, sx, sy, 5, 1, '#b5f9ff');
+      }
+
+      ctx.restore();
+      return;
+    }
+
     ctx.save();
-    ctx.translate(this.x, this.y);
+
+    // 1. Draw shadow on the ground if parabolic
+    if (this.isParabolic && this.z > 0) {
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+      const shadowScale = Math.max(0.4, 1 - (this.z / 110) * 0.45);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, this.radius * 1.3 * shadowScale, this.radius * 0.65 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 2. Translate coordinates and apply z-height Y offset
+    ctx.translate(this.x, this.y - (this.z || 0));
     ctx.rotate(this.angle);
 
     if (this.behavior === 'rail_laser') {
@@ -549,7 +624,7 @@ export class Player {
   // Automatic weapon shoot routine
   shoot(monsters, projectiles, boss = null) {
     try {
-      const weapons = getCombatEquippedWeapons();
+      const weapons = getEquippedWeapons();
       const now = Date.now();
 
       weapons.forEach((weapon, index) => {

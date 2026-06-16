@@ -31,7 +31,7 @@ export const WEAPONS_DB = [
 
   // 21-30: Legendary Weapons (High Cost)
   { id: 21, name: "용잡이 검기", type: "hit", price: 150000, dmg: 180, cooldown: 600, desc: "전방으로 화면 절반 크기의 거대 검기를 격발합니다.", symbol: "🐉" },
-  { id: 22, name: "네이팜 런처", type: "splash", price: 180000, dmg: 200, cooldown: 2200, desc: "거대 유탄 폭발 후 넓은 화염 지대를 5초간 남깁니다.", symbol: "🔥" },
+  { id: 22, name: "네이팜 런처", type: "splash", price: 180000, dmg: 200, cooldown: 2200, desc: "거대 유탄 폭발 후 넓은 화염 지대를 5초간 남긴다.", symbol: "🔥" },
   { id: 23, name: "테슬라 퓨전건", type: "homing", price: 220000, dmg: 110, cooldown: 800, desc: "가까운 적 최대 10명에게 번개를 튕기며 감전시킵니다.", symbol: "⚡" },
   { id: 24, name: "플라스마 레일건", type: "pierce", price: 270000, dmg: 250, cooldown: 2000, desc: "지나가는 자리에 궤적 폭발을 남기는 광선을 발사합니다.", symbol: "🌐" },
   { id: 25, name: "블랙홀 바운서", type: "homing", price: 320000, dmg: 90, cooldown: 2500, desc: "적들을 모아서 분쇄하는 블랙홀 중력장을 소환합니다.", symbol: "🕳️" },
@@ -70,6 +70,17 @@ const DEFAULT_STATE = {
 // Global Store State
 let state = { ...DEFAULT_STATE };
 
+function isDebugMode() {
+  return typeof window !== 'undefined' && window.location.search.includes('debug=true');
+}
+
+function applyDebugState() {
+  state.ownedWeaponIds = WEAPONS_DB.map(w => w.id);
+  state.equippedWeaponIds = [1, 2, 5]; // Katana, Revolver, Shuriken
+  state.weaponLevels = Object.fromEntries(WEAPONS_DB.map(w => [w.id, 1]));
+  state.gold = 999999;
+}
+
 // Load state from LocalStorage
 export function loadState() {
   const data = localStorage.getItem("math_fighter_save");
@@ -104,11 +115,8 @@ export function loadState() {
   }
   
   // Debug Override Mode
-  if (typeof window !== 'undefined' && window.location.search.includes('debug=true')) {
-    state.ownedWeaponIds = WEAPONS_DB.map(w => w.id);
-    state.equippedWeaponIds = [1, 2, 5]; // Katana, Revolver, Shuriken
-    state.weaponLevels = Object.fromEntries(WEAPONS_DB.map(w => [w.id, 1]));
-    state.gold = 999999;
+  if (isDebugMode()) {
+    applyDebugState();
   }
 
   if (typeof window !== 'undefined') {
@@ -125,6 +133,9 @@ export function saveState() {
 // Reset state
 export function resetState() {
   state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  if (isDebugMode()) {
+    applyDebugState();
+  }
   if (typeof window !== 'undefined') {
     window.gameStateStore = state;
   }
@@ -153,6 +164,18 @@ export function getEquippedWeapon() {
 }
 
 export function getEquippedWeapons() {
+  if (typeof window !== 'undefined') {
+    const raw = localStorage.getItem("math_fighter_save");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.equippedWeaponIds) {
+          state.equippedWeaponIds = parsed.equippedWeaponIds.map(Number);
+        }
+      } catch (e) {}
+    }
+  }
+
   const ids = state.equippedWeaponIds || [state.equippedWeaponId || 1];
   return ids
     .map(id => {
@@ -202,7 +225,8 @@ export function getWeaponUpgradeCost(id) {
   if (!weapon) return Infinity;
   const level = getWeaponLevel(numericId);
   if (level >= 10) return Infinity;
-  return Math.floor(Math.max(350, weapon.price * 0.42) * Math.pow(1.62, level - 1));
+  const baseCost = Math.max(350, weapon.price * 0.42) * Math.pow(1.62, level - 1);
+  return Math.floor(baseCost * 0.5);
 }
 
 export function getWeaponUpgradeSummary(id) {

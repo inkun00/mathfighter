@@ -1383,3 +1383,119 @@ body, html {
     min-height: 58px;
   }
 }
+
+/* Pause Lounge Layout */
+.broad-modal-content {
+  max-width: 860px !important;
+  width: 90%;
+  box-sizing: border-box;
+}
+
+.pause-lounge {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  margin-bottom: 25px;
+  text-align: left;
+}
+
+.pause-status-panel {
+  background: rgba(18, 9, 32, 0.95);
+  border: 3px solid var(--color-border);
+  padding: 15px;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.pause-status-panel h3 {
+  font-family: 'Press Start 2P', Courier, monospace;
+  font-size: 14px;
+  color: var(--color-accent);
+  margin-bottom: 15px;
+  border-bottom: 2px dashed rgba(255, 0, 127, 0.3);
+  padding-bottom: 8px;
+}
+
+.pause-weapon-panel {
+  background: rgba(18, 9, 32, 0.95);
+  border: 3px solid var(--color-border);
+  padding: 15px;
+  border-radius: 6px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.pause-weapon-panel h3 {
+  font-family: 'Press Start 2P', Courier, monospace;
+  font-size: 14px;
+  color: var(--color-warning);
+  margin-bottom: 15px;
+  border-bottom: 2px dashed rgba(255, 170, 0, 0.3);
+  padding-bottom: 8px;
+}
+
+.pause-weapon-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* Pause Weapon Card */
+.pause-weapon-card {
+  background: rgba(40, 20, 60, 0.85);
+  border: 2px solid var(--color-secondary);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.pause-weapon-card.equipped {
+  border-color: var(--color-warning);
+  background: rgba(70, 35, 10, 0.85);
+}
+
+.pause-weapon-card h4 {
+  font-size: 12px;
+  color: #fff;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pause-weapon-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pause-weapon-card-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.pause-weapon-desc {
+  font-size: 10px;
+  color: var(--color-text-light);
+  line-height: 1.3;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pause-weapon-btn {
+  width: 100%;
+  padding: 6px 0;
+  font-size: 10px;
+  font-weight: bold;
+}

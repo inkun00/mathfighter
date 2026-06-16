@@ -129,6 +129,13 @@ export function openBrainTrainingModal(stage, onCloseCallback) {
   const submitBtn = document.getElementById('submitBrainTrainingBtn');
   const closeBtn = document.getElementById('closeBrainTrainingBtn');
 
+  // Update description text dynamically to match the stage-based gold reward
+  const desc = document.getElementById('brainTrainingDesc');
+  const perfectBonusGold = Math.max(1, stage) * 1000;
+  if (desc) {
+    desc.textContent = `대기실에서 도전하는 추가 주관식 문제입니다. 한 문제당 300골드, 3문제를 모두 맞히면 총 ${perfectBonusGold.toLocaleString()}골드를 획득합니다.`;
+  }
+
   brainTrainingQuestions = generateBrainTrainingQuestions(stage);
   renderQuestionList(listContainer, brainTrainingQuestions, 'brain-question');
 

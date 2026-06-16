@@ -40,7 +40,7 @@ let cameraOffset = { x: 0, y: 0, initialized: false };
 
 let currentProblem = null;
 let problemProgress = 0;
-let stageTimer = 120; // Seconds left to survive regular stages
+let stageTimer = 90; // Seconds left to survive regular stages
 let problemTimer = 30; // Seconds left for current math question
 let problemSerial = 0;
 
@@ -252,7 +252,7 @@ function restoreSessionIfNeeded() {
 
     selectedGender = saved.selectedGender || saved.player.gender || 'male';
     currentStage = saved.currentStage || 1;
-    stageTimer = Number.isFinite(saved.stageTimer) ? saved.stageTimer : 120;
+    stageTimer = Number.isFinite(saved.stageTimer) ? saved.stageTimer : 90;
     problemTimer = Number.isFinite(saved.problemTimer) ? saved.problemTimer : 30;
     usedReviewRevive = Boolean(saved.usedReviewRevive);
     brainTrainingCompletedStages = new Set(Array.isArray(saved.brainTrainingCompletedStages) ? saved.brainTrainingCompletedStages : []);
@@ -391,12 +391,86 @@ function isVisibleGameplayScreen() {
   );
 }
 
+function renderPauseLounge() {
+  if (!player) return;
+
+  // 1. Stats Rendering
+  const stats = getCurrentStatSummary();
+  const statsContainer = document.getElementById('pausePlayerStats');
+  if (statsContainer) {
+    statsContainer.innerHTML = `
+      <div class="status-row"><span>최대 HP</span><strong>${stats.maxHp}</strong></div>
+      <div class="status-row"><span>방어력</span><strong>${stats.defense}</strong></div>
+      <div class="status-row"><span>공격 보너스</span><strong>+${stats.attackBonus}%</strong></div>
+      <div class="status-row"><span>연사 보너스</span><strong>+${stats.fireRate}%</strong></div>
+      <div class="status-row"><span>자석 범위</span><strong>${stats.magnet}</strong></div>
+      <div class="status-row"><span>골드 보너스</span><strong>+${stats.goldBonus}%</strong></div>
+      <div class="status-row"><span>무기 총 피해</span><strong>${stats.weaponDamage}</strong></div>
+      <div class="status-row"><span>초당 화력</span><strong>${stats.weaponDps}</strong></div>
+    `;
+  }
+
+  // 2. Weapon Change Rendering
+  const weaponList = document.getElementById('pauseWeaponList');
+  if (weaponList) {
+    weaponList.innerHTML = "";
+    const ownedWeapons = getOwnedWeapons();
+    const equippedWeapons = getEquippedWeapons();
+    const equippedWeaponIds = equippedWeapons.map(w => w.id);
+
+    WEAPONS_DB.forEach(w => {
+      // Only show owned weapons in the pause screen
+      if (!ownedWeapons.includes(w.id)) return;
+
+      const isEquipped = equippedWeaponIds.includes(w.id);
+      const card = document.createElement('div');
+      card.className = `pause-weapon-card ${isEquipped ? 'equipped' : ''}`;
+
+      let actionBtn = "";
+      if (isEquipped) {
+        const canUnequip = equippedWeaponIds.length > 1;
+        actionBtn = `<button class="buy-btn pause-weapon-btn equip-toggle-btn" data-id="${w.id}" ${canUnequip ? '' : 'disabled'}>장착 해제</button>`;
+      } else {
+        const label = equippedWeaponIds.length >= 3 ? '교체 장착' : '장착하기';
+        actionBtn = `<button class="buy-btn pause-weapon-btn equip-toggle-btn" data-id="${w.id}">${label}</button>`;
+      }
+
+      card.innerHTML = `
+        <div class="pause-weapon-card-header">
+          <img class="pause-weapon-card-icon" src="/assets/weapons/weapon_${String(w.id).padStart(2, '0')}.png" alt="${w.name}">
+          <h4>${w.name}</h4>
+        </div>
+        <p class="pause-weapon-desc">피해: ${w.dmg} / 범위: ${getWeaponRangeLabel(w.id, w.type)}</p>
+        ${actionBtn}
+      `;
+
+      weaponList.appendChild(card);
+    });
+
+    // 3. Bind equip action click listeners
+    weaponList.querySelectorAll('.equip-toggle-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = parseInt(e.currentTarget.dataset.id);
+        if (equipWeapon(id)) {
+          // Re-render immediately
+          renderPauseLounge();
+          // Update HUD to show the new weapon status
+          updateHUD();
+          // Save session changes immediately
+          saveSessionSnapshot();
+        }
+      });
+    });
+  }
+}
+
 function showPauseMenu() {
   if (gameState !== 'play' && !isVisibleGameplayScreen()) return;
   gameState = 'pause';
   keys = {};
   resetMobileMoveControl();
   blurActiveControl();
+  renderPauseLounge();
   document.getElementById('pauseModal').classList.remove('hidden');
   saveSessionSnapshot();
 }
@@ -411,6 +485,28 @@ function resumeFromPause() {
   if (gameState !== 'pause') return;
   hidePauseMenu();
   keys = {};
+  
+  if (player) {
+    player.refreshStats();
+    
+    const equippedWeapons = getEquippedWeapons();
+    const equippedWeaponIds = equippedWeapons.map(w => w.id);
+    
+    equippedWeapons.forEach(w => {
+      const slotKey = String(w.id);
+      if (player.lastShotTimes[slotKey] === undefined) {
+        player.lastShotTimes[slotKey] = 0;
+      }
+    });
+
+    projectiles = projectiles.filter(p => {
+      if (p.id !== undefined) {
+        return equippedWeaponIds.includes(p.id);
+      }
+      return true;
+    });
+  }
+
   gameState = 'play';
   saveSessionSnapshot();
 }
@@ -446,7 +542,7 @@ function resetRunData() {
   totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   combo = 0;
   currentStage = 1;
-  stageTimer = 120;
+  stageTimer = 90;
   problemTimer = 30;
   problemSerial = 0;
   usedReviewRevive = false;
@@ -729,7 +825,7 @@ function loadStage(stageNum) {
   currentProblem = createStageProblem(stageNum);
   problemProgress = 0;
   combo = 0; // Reset combo count for the new stage
-  stageTimer = stageNum % 10 === 0 ? 0 : 120;
+  stageTimer = stageNum % 10 === 0 ? 0 : 90;
   problemTimer = 30;
   lastSpawnTime = Date.now() + 1200;
   lastSecTime = Date.now();
@@ -1505,13 +1601,13 @@ function update() {
             }
           }
         } else {
-          // Oded: deal 30% of monster contact damage
+          // penalty: deal 60% of monster contact damage (increased by 2x from 30%)
           const baseAtk = monsters.length > 0 ? monsters[0].atk : 10;
-          const penaltyDmg = Math.floor(baseAtk * 0.3);
+          const penaltyDmg = Math.max(1, Math.floor(baseAtk * 0.6));
           player.takeDamage(penaltyDmg);
           combo = 0;
           
-          spawnTextParticle(item.x, item.y, "오답! HP-", "#ff007f");
+          spawnTextParticle(item.x, item.y, `오답! HP -${penaltyDmg}`, "#ff007f");
 
           // Save wrong math area index
           recordWrongArea(activeProblem.area);
@@ -1585,6 +1681,7 @@ function update() {
 
     monsters.forEach(m => {
       if (m.hp <= 0 || p.isDead) return;
+      if (p.isParabolic && p.z > 0) return;
       if (p.hitTargets?.has(m)) return;
       const dx = m.x - p.x;
       const dy = m.y - p.y;
@@ -1628,6 +1725,7 @@ function update() {
 
     // Check Boss collision
     if (boss && !p.isDead && (!boss.isGimmickActive || boss.stage !== 10)) {
+      if (p.isParabolic && p.z > 0) return;
       if (p.hitTargets?.has(boss)) return;
       const dx = boss.x - p.x;
       const dy = boss.y - p.y;
@@ -1666,7 +1764,7 @@ function update() {
 
   monsters = monsters.filter(m => m.hp > 0 || Date.now() - m.spawnTime < 1000);
 
-  // 12. Clear regular stages after surviving for two minutes.
+  // 12. Clear regular stages after surviving for 90 seconds.
   if (!boss && currentStage % 10 !== 0 && stageTimer <= 0) {
     addGold(200);
     player.gold = getGold();

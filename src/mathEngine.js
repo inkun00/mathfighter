@@ -30,11 +30,11 @@ export function getLCM(a, b) {
 export function generateBrainTrainingQuestions(stage = 1) {
   const difficulty = Math.max(1, Math.min(5, Math.ceil(stage / 10)));
   const divisorTargets = [
-    [18, 20, 24, 28, 30, 36],
-    [32, 36, 42, 45, 48, 54],
-    [56, 60, 63, 72, 80, 84],
-    [90, 96, 108, 120, 126, 132],
-    [144, 150, 168, 180, 192, 210]
+    [12, 16, 18, 20, 24, 27, 28, 30, 36, 40, 42],
+    [32, 36, 40, 42, 45, 48, 50, 52, 54, 56, 60, 63, 64],
+    [54, 56, 60, 63, 66, 70, 72, 75, 78, 80, 84, 88, 90],
+    [84, 90, 96, 99, 100, 104, 108, 112, 117, 120, 126, 130, 132, 135],
+    [128, 140, 144, 150, 156, 160, 162, 168, 175, 180, 192, 196, 200, 210]
   ];
   const stamp = Date.now().toString(36);
   const targetSet = divisorTargets[difficulty - 1];
@@ -44,7 +44,7 @@ export function generateBrainTrainingQuestions(stage = 1) {
       const limit = Math.max(3, Math.floor(target / (difficulty + 4)));
       const answer = getDivisors(target).filter(value => value > limit && value < target).length;
       return {
-        text: `${target}\uC758 \uC57D\uC218 \uC911 ${limit}\uBCF4\uB2E4 \uD06C\uACE0 ${target}\uBCF4\uB2E4 \uC791\uC740 \uC57D\uC218\uB294 \uBA87 \uAC1C\uC778\uAC00\uC694?`,
+        text: `${target}의 약수 중 ${limit}보다 크고 ${target}보다 작은 약수는 몇 개인가요?`,
         answer
       };
     },
@@ -54,71 +54,71 @@ export function generateBrainTrainingQuestions(stage = 1) {
         .filter(value => value !== target)
         .reduce((sum, value) => sum + value, 0);
       return {
-        text: `${target}\uC758 \uC790\uAE30 \uC790\uC2E0\uC744 \uC81C\uC678\uD55C \uBAA8\uB4E0 \uC57D\uC218\uC758 \uD569\uC744 \uAD6C\uD558\uC138\uC694.`,
+        text: `${target}의 자기 자신을 제외한 모든 약수의 합을 구하세요.`,
         answer
       };
     },
     () => {
-      const a = Math.floor(Math.random() * (5 + difficulty)) + 4;
-      const b = Math.floor(Math.random() * (5 + difficulty)) + 5;
+      const a = Math.floor(Math.random() * (7 + difficulty * 2)) + 4;
+      const b = Math.floor(Math.random() * (7 + difficulty * 2)) + 5;
       return {
-        text: `${a} x \u25A1 = ${a * b} \uC785\uB2C8\uB2E4. \u25A1\uC5D0 \uB4E4\uC5B4\uAC08 \uC218\uB97C \uAD6C\uD558\uC138\uC694.`,
+        text: `${a} x □ = ${a * b} 입니다. □에 들어갈 수를 구하세요.`,
         answer: b
       };
     },
     () => {
-      const base = Math.floor(Math.random() * (4 + difficulty)) + 3 + difficulty;
-      const order = Math.floor(Math.random() * 4) + 3 + difficulty;
+      const base = Math.floor(Math.random() * (6 + difficulty * 2)) + 3 + difficulty;
+      const order = Math.floor(Math.random() * 6) + 3 + difficulty;
       return {
-        text: `${base}\uC758 ${order}\uBC88\uC9F8 \uBC30\uC218\uB294 \uBB34\uC5C7\uC778\uAC00\uC694?`,
+        text: `${base}의 ${order}번째 배수는 무엇인가요?`,
         answer: base * order
       };
     },
     () => {
-      const a = Math.floor(Math.random() * (4 + difficulty)) + 3;
-      const b = a + Math.floor(Math.random() * 4) + 2;
+      const a = Math.floor(Math.random() * (6 + difficulty * 2)) + 3;
+      const b = a + Math.floor(Math.random() * 6) + 2;
       return {
-        text: `\uB450 \uC218 ${a}, ${b}\uC758 \uACF5\uBC30\uC218 \uC911 \uAC00\uC7A5 \uC791\uC740 \uC218\uB97C \uAD6C\uD558\uC138\uC694.`,
+        text: `두 수 ${a}, ${b}의 공배수 중 가장 작은 수를 구하세요.`,
         answer: getLCM(a, b)
       };
     },
     () => {
-      const gcdBase = randomFrom([2, 3, 4, 5, 6, 8, 9, 10].slice(0, 4 + difficulty));
-      const a = gcdBase * (Math.floor(Math.random() * 4) + 3 + difficulty);
-      const b = gcdBase * (Math.floor(Math.random() * 4) + 6 + difficulty);
+      const gcdBase = randomFrom([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15].slice(0, 5 + difficulty));
+      const a = gcdBase * (Math.floor(Math.random() * 5) + 3 + difficulty);
+      const b = gcdBase * (Math.floor(Math.random() * 5) + 6 + difficulty);
       return {
-        text: `\uB450 \uC218 ${a}, ${b}\uC758 \uACF5\uC57D\uC218\uB294 \uBAA8\uB450 \uBA87 \uAC1C\uC778\uAC00\uC694?`,
+        text: `두 수 ${a}, ${b}의 공약수는 모두 몇 개인가요?`,
         answer: getDivisors(getGCD(a, b)).length
       };
     },
     () => {
-      const gcdBase = randomFrom([2, 3, 4, 5, 6, 8, 9, 10].slice(0, 4 + difficulty));
-      let a = gcdBase * (Math.floor(Math.random() * 4) + 2 + difficulty);
-      let b = gcdBase * (Math.floor(Math.random() * 5) + 5 + difficulty);
+      const gcdBase = randomFrom([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15].slice(0, 5 + difficulty));
+      let a = gcdBase * (Math.floor(Math.random() * 5) + 2 + difficulty);
+      let b = gcdBase * (Math.floor(Math.random() * 6) + 5 + difficulty);
       while (a === b || getGCD(a, b) !== gcdBase) {
-        a = gcdBase * (Math.floor(Math.random() * 4) + 2 + difficulty);
-        b = gcdBase * (Math.floor(Math.random() * 5) + 5 + difficulty);
+        a = gcdBase * (Math.floor(Math.random() * 5) + 2 + difficulty);
+        b = gcdBase * (Math.floor(Math.random() * 6) + 5 + difficulty);
       }
       return {
-        text: `\uB450 \uC218 ${a}, ${b}\uC758 \uCD5C\uB300\uACF5\uC57D\uC218\uB97C \uAD6C\uD558\uC138\uC694.`,
+        text: `두 수 ${a}, ${b}의 최대공약수를 구하세요.`,
         answer: getGCD(a, b)
       };
     },
     () => {
-      const a = Math.floor(Math.random() * (4 + difficulty)) + 4;
-      let b = Math.floor(Math.random() * (5 + difficulty)) + 5;
+      const a = Math.floor(Math.random() * (6 + difficulty * 2)) + 4;
+      let b = Math.floor(Math.random() * (7 + difficulty * 2)) + 5;
       if (a === b) b += difficulty + 1;
       return {
-        text: `\uB450 \uC218 ${a}, ${b}\uC758 \uCD5C\uC18C\uACF5\uBC30\uC218\uB97C \uAD6C\uD558\uC138\uC694.`,
+        text: `두 수 ${a}, ${b}의 최소공배수를 구하세요.`,
         answer: getLCM(a, b)
       };
     },
     () => {
-      const divisor = Math.floor(Math.random() * (5 + difficulty)) + 4;
-      const quotient = Math.floor(Math.random() * 8) + 5;
+      const divisor = Math.floor(Math.random() * (7 + difficulty * 2)) + 4;
+      const quotient = Math.floor(Math.random() * 10) + 5;
       const answer = Math.floor(Math.random() * (divisor - 1)) + 1;
       return {
-        text: `${divisor * quotient + answer}\uC5D0\uC11C ${divisor}\uB85C \uB098\uB204\uC5C8\uC744 \uB54C\uC758 \uB098\uBA38\uC9C0\uB97C \uAD6C\uD558\uC138\uC694.`,
+        text: `${divisor * quotient + answer}에서 ${divisor}로 나누었을 때의 나머지를 구하세요.`,
         answer
       };
     }
@@ -142,14 +142,16 @@ function randomInt(min, max) {
 function getDivisorTargets(stage) {
   if (stage <= 20) {
     return [
-      12, 14, 15, 16, 18, 20, 21, 22, 24, 25, 27, 28, 30,
-      32, 33, 35, 36, 40, 42, 44, 45, 48, 50, 54, 56, 60
+      10, 12, 14, 15, 16, 18, 20, 21, 22, 24, 25, 26, 27, 28, 30,
+      32, 33, 34, 35, 36, 38, 40, 42, 44, 45, 46, 48, 50, 51, 52, 54, 55, 56, 57, 58, 60
     ];
   }
 
   return [
-    32, 36, 40, 42, 45, 48, 50, 54, 56, 60, 63, 64, 66, 70,
-    72, 75, 80, 84, 88, 90, 96, 98, 99, 100, 108, 112, 120
+    32, 36, 39, 40, 42, 45, 48, 50, 51, 52, 54, 55, 56, 60, 62, 63, 64, 65, 66, 68, 70,
+    72, 74, 75, 76, 78, 80, 82, 84, 85, 86, 88, 90, 92, 93, 94, 95, 96, 98, 99, 100, 102,
+    104, 105, 106, 108, 110, 112, 114, 115, 116, 117, 118, 120, 124, 125, 126, 128, 130,
+    132, 135, 136, 138, 140, 144, 150
   ];
 }
 
