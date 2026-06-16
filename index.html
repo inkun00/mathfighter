@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>수학 특공대: 약수와 배수 (Math Fighter)</title>
+  <!-- Google Fonts: Retro & Clean Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- html2canvas CDN for image download fallback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- 1. 시작 화면 -->
+    <div id="startScreen" class="overlay-screen active">
+      <div class="pixel-box main-title-box">
+        <h1 class="main-title">MATH<br><span class="highlight">FIGHTER</span></h1>
+        <p class="subtitle">수학 특공대: 약수와 배수</p>
+      </div>
+      <div class="pixel-box start-form-box">
+        <label for="playerNameInput" class="label-text">특공대원 이름을 입력하세요</label>
+        <input type="text" id="playerNameInput" maxlength="8" placeholder="대원명 (최대 8자)" value="홍길동">
+        
+        <div class="gender-selection-container">
+          <label class="label-text">특공대원 캐릭터 성별을 선택하세요</label>
+          <div class="gender-cards">
+            <div class="gender-card active" data-gender="male" id="genderMaleCard">
+              <div class="gender-preview gender-preview-male"></div>
+              <span class="gender-label">남성 캐릭터</span>
+            </div>
+            <div class="gender-card" data-gender="female" id="genderFemaleCard">
+              <div class="gender-preview gender-preview-female"></div>
+              <span class="gender-label">여성 캐릭터</span>
+            </div>
+          </div>
+        </div>
+        
+        <button id="startGameBtn" class="pixel-btn">게임 시작</button>
+      </div>
+      <div class="instructions-box">
+        <h3>[ 게임 조작 방법 ]</h3>
+        <p>• 이동: 키보드 방향키 또는 <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span></p>
+        <p>• 무기 공격: 자동 조준 및 자동 발사</p>
+        <p>• 학습 규칙: 화면 상단 문제를 보고, 몹이 드롭하는 <span class="green-text">정답 숫자</span>를 획득하여 게이지를 채우세요. <span class="red-text">오답 숫자</span>를 먹으면 HP가 크게 감소합니다!</p>
+      </div>
+    </div>
+
+    <!-- 2. 인게임 전투 화면 -->
+    <div id="gameContainer" class="hidden">
+      <!-- 캔버스 영역 -->
+      <canvas id="gameCanvas"></canvas>
+
+      <!-- HUD 오버레이 (직계 배치로 꼬임 제거) -->
+      <!-- 상단 문제 알림바 -->
+      <div id="problemBar" class="pixel-box">
+        <div class="timer-container">
+          <span class="hud-label">TIME</span>
+          <span id="problemTimer" class="hud-value">30</span>
+        </div>
+        <div class="problem-text-container">
+          <span id="problemText">로딩 중...</span>
+        </div>
+        <div class="gauge-container">
+          <div id="problemGauge" class="gauge-fill"></div>
+        </div>
+      </div>
+
+      <!-- 캐릭터 스탯 바 -->
+      <div id="statsBar">
+        <div class="stats-row">
+          <div class="exp-bar-container">
+            <div id="expBar" class="gauge-fill-exp"></div>
+            <span id="levelText" class="hud-mini-text">LV.1</span>
+          </div>
+          <div class="combo-container">
+            <span id="comboText">0 COMBO</span>
+          </div>
+        </div>
+        <div class="stats-row">
+          <div class="hp-bar-container">
+            <div id="hpBar" class="gauge-fill-hp"></div>
+            <span id="hpText" class="hud-mini-text">HP: 100/100</span>
+          </div>
+          <div class="gold-container">
+            <span class="gold-icon">🪙</span>
+            <span id="goldText" class="hud-value">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 현재 스테이지 정보 -->
+      <div id="stageInfo" class="pixel-box-mini">
+        STAGE <span id="stageNum">1</span>/50
+      </div>
+
+      <div id="mobileMoveControl" class="mobile-move-control" aria-label="이동 컨트롤러">
+        <div class="mobile-stick-base">
+          <div id="mobileStickKnob" class="mobile-stick-knob"></div>
+        </div>
+      </div>
+
+      <!-- 레벨업 스킬 선택 팝업 (로그라이크) -->
+      <button id="mobilePauseBtn" class="mobile-pause-btn" aria-label="Pause" onclick="window.pauseMathFighter?.()">II</button>
+
+      <div id="levelUpModal" class="modal hidden">
+        <div class="modal-content pixel-box">
+          <h2>LEVEL UP!</h2>
+          <p class="modal-desc">지원 스킬을 선택하세요.</p>
+          <div id="skillCardContainer">
+            <!-- 무작위 3장 카드가 JS를 통해 동적 생성됨 -->
+          </div>
+        </div>
+      </div>
+
+      <div id="pauseModal" class="modal hidden">
+        <div class="modal-content pixel-box pause-content">
+          <h2>PAUSED</h2>
+          <p class="modal-desc">게임을 일시 정지했습니다.</p>
+          <div class="pause-actions">
+            <button id="pauseRestartBtn" class="pixel-btn exit-btn">다시 시작하기</button>
+            <button id="pauseResumeBtn" class="pixel-btn">되돌아가기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 스테이지 클리어 간 상점 화면 -->
+    <div id="shopScreen" class="overlay-screen hidden">
+      <div class="pixel-box title-bar">
+        <h2>특공대 대기실 상점</h2>
+        <div class="shop-gold">현재 보유 골드: 🪙 <span id="shopGoldText">0</span></div>
+      </div>
+      <div class="shop-tabs">
+        <button id="tabWeaponBtn" class="tab-btn active">무기/장비 상점</button>
+        <button id="tabUpgradeBtn" class="tab-btn">특공대원 강화</button>
+        <button id="brainTrainingBtn" class="tab-btn brain-tab-btn">특공대원 두뇌 강화</button>
+      </div>
+      <div class="shop-body">
+        <aside id="playerStatusPanel" class="player-status-panel pixel-box">
+          <div class="status-player-preview" id="shopPlayerPreview"></div>
+          <h3 id="shopPlayerName">PLAYER</h3>
+          <div id="shopPlayerStats" class="status-stat-list"></div>
+          <div id="shopEquippedWeapons" class="status-weapon-list"></div>
+        </aside>
+        <!-- 무기 리스트 영역 -->
+        <div id="weaponShopList" class="shop-grid active-grid">
+          <!-- 30종 무기가 렌더링됨 -->
+        </div>
+        <!-- 캐릭터 영구 강화 업그레이드 영역 -->
+        <div id="upgradeShopList" class="shop-grid">
+          <!-- 체력, 공격력, 자석 등의 업그레이드가 렌더링됨 -->
+        </div>
+      </div>
+      <button id="nextStageBtn" class="pixel-btn next-btn">다음 스테이지 시작</button>
+    </div>
+
+    <!-- 4. 사망 시 복습 시험지 팝업 -->
+    <div id="examModal" class="modal hidden">
+      <div class="exam-paper">
+        <div class="exam-header">
+          <h2>취약점 보완 복습 평가</h2>
+          <p>방금 오답으로 감점당한 유형의 복습 문제입니다. 정답을 맞추면 다음 재도전에 큰 보너스 골드를 획득합니다!</p>
+        </div>
+        <div id="examQuestionList" class="exam-body">
+          <!-- 동적으로 오답 노트 기반 문제가 렌더링됨 -->
+        </div>
+        <div class="exam-footer">
+          <button id="submitExamBtn" class="pixel-btn">답안 제출하기</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="brainTrainingModal" class="modal hidden">
+      <div class="exam-paper brain-paper">
+        <div class="exam-header">
+          <h2>특공대원 두뇌 강화</h2>
+          <p>대기실에서 도전하는 추가 주관식 문제입니다. 한 문제당 300골드, 3문제를 모두 맞히면 총 1000골드를 획득합니다.</p>
+        </div>
+        <div id="brainTrainingQuestionList" class="exam-body">
+          <!-- 상점 두뇌 강화 문제가 렌더링됨 -->
+        </div>
+        <div class="exam-footer brain-footer">
+          <button id="closeBrainTrainingBtn" class="pixel-btn secondary-btn">닫기</button>
+          <button id="submitBrainTrainingBtn" class="pixel-btn">답안 제출하기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. 최종 성적 보고서 및 인증서 화면 -->
+    <div id="certScreen" class="overlay-screen hidden">
+      <div id="certContainer" class="cert-paper">
+        <div class="cert-header">
+          <div class="cert-crest">★ CERTIFICATE ★</div>
+          <h1>수학 특공대 수료 인증서</h1>
+          <p class="cert-no">인증번호: No. MF-<span id="certNoText">000000</span></p>
+        </div>
+        <div class="cert-body">
+          <p class="cert-desc">위 특공대원 <span id="certNameText" class="underline">홍길동</span>은(는) 약수와 배수의 거친 수학 전투에서 훌륭한 용기와 지혜로 미션을 완수하였기에 이 인증서를 수여합니다.</p>
+          <div class="cert-stats-grid">
+            <div class="cert-stat-item">
+              <span class="label">최종 스테이지</span>
+              <span id="certStageText" class="val">50 STAGE</span>
+            </div>
+            <div class="cert-stat-item">
+              <span class="label">종합 스코어</span>
+              <span id="certScoreText" class="val">98,200</span>
+            </div>
+            <div class="cert-stat-item">
+              <span class="label">학업 성취 등급</span>
+              <span id="certGradeText" class="val">수학 마스터</span>
+            </div>
+          </div>
+          <!-- 방사형 그래프 영역 -->
+          <div class="cert-chart-container">
+            <canvas id="certChartCanvas" width="220" height="220"></canvas>
+          </div>
+          <div class="cert-feedback">
+            <div class="feedback-box">
+              <strong class="green-text">💪 많이 맞춘 강점 영역:</strong>
+              <p id="certStrengthText">공약수와 최대공약수 개념에 강점이 있습니다.</p>
+            </div>
+            <div class="feedback-box">
+              <strong class="red-text">✍️ 보충해야 할 약점 영역:</strong>
+              <p id="certWeaknessText">최소공배수의 실생활 응용 문제 분석력이 필요합니다.</p>
+            </div>
+            <div class="feedback-box">
+              <strong class="blue-text">📋 특공대 사령부 지도 코멘트:</strong>
+              <p id="certCommentText">기본적인 나열법에만 안주하지 않고 두 수의 연제법과 곱셈 관계의 구조를 정확하게 파악하고 있습니다. 다음 분수의 덧셈과 뺄셈 단원으로 나아갈 준비가 완벽히 되었습니다!</p>
+            </div>
+          </div>
+        </div>
+        <div class="cert-footer">
+          <p>발행일: <span id="certDateText">2026년 6월 13일</span></p>
+          <h3>수학 특공대 사령부 장관</h3>
+        </div>
+      </div>
+      <div class="cert-actions">
+        <button id="saveCertBtn" class="pixel-btn">인증서 이미지 파일 저장 (PNG)</button>
+        <button id="restartGameBtn" class="pixel-btn exit-btn">게임 완전히 다시 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js?v=mobile-browser-speed"></script>
+</body>
+</html>
