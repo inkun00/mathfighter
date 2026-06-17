@@ -121,6 +121,61 @@ export function generateBrainTrainingQuestions(stage = 1) {
         text: `${divisor * quotient + answer}에서 ${divisor}로 나누었을 때의 나머지를 구하세요.`,
         answer
       };
+    },
+    () => {
+      const gcdBase = randomFrom([2, 3, 4, 5, 6, 8, 9].slice(0, 3 + difficulty));
+      const a = gcdBase * (Math.floor(Math.random() * 4) + 2 + difficulty);
+      const b = gcdBase * (Math.floor(Math.random() * 4) + 5 + difficulty);
+      const gcd = getGCD(a, b);
+      return {
+        text: `두 수 ${a}와 ${b}의 최대공약수의 약수는 모두 몇 개인가요?`,
+        answer: getDivisors(gcd).length
+      };
+    },
+    () => {
+      const common = randomFrom([2, 3, 4, 5, 6].slice(0, 2 + difficulty));
+      const a = common * 2;
+      const b = common * 3;
+      const c = common * 5;
+      return {
+        text: `세 수 ${a}, ${b}, ${c}의 최대공약수를 구하세요.`,
+        answer: common
+      };
+    },
+    () => {
+      const gcdBase = randomFrom([3, 4, 5, 6, 8, 10, 12].slice(0, 3 + difficulty));
+      let a = gcdBase * (Math.floor(Math.random() * 4) + 3);
+      let b = gcdBase * (Math.floor(Math.random() * 4) + 5);
+      while (a === b) {
+        b = gcdBase * (Math.floor(Math.random() * 4) + 5);
+      }
+      return {
+        text: `가로가 ${a}cm, 세로가 ${b}cm인 직사각형 종이를 남김없이 가장 큰 정사각형 모양으로 자르려고 합니다. 이 정사각형의 한 변의 길이는 몇 cm인가요?`,
+        answer: getGCD(a, b)
+      };
+    },
+    () => {
+      const a = randomFrom([4, 5, 6, 8, 10, 12].slice(0, 3 + difficulty));
+      let b = randomFrom([5, 6, 8, 9, 12, 15].slice(0, 3 + difficulty));
+      while (a === b || getLCM(a, b) > 120) {
+        b = randomFrom([5, 6, 8, 9, 12, 15].slice(0, 3 + difficulty));
+      }
+      return {
+        text: `A 버스는 ${a}분마다, B 버스는 ${b}분마다 출발합니다. 두 버스가 동시에 출발한 후 처음으로 다시 동시에 출발하는 것은 몇 분 뒤인가요?`,
+        answer: getLCM(a, b)
+      };
+    },
+    () => {
+      const gcdBase = randomFrom([4, 6, 8, 10, 12].slice(0, 3 + difficulty));
+      let a = gcdBase * (Math.floor(Math.random() * 3) + 2);
+      let b = gcdBase * (Math.floor(Math.random() * 3) + 4);
+      while (a === b) {
+        b = gcdBase * (Math.floor(Math.random() * 3) + 4);
+      }
+      return {
+        text: `어떤 자연수로 ${a}를 나누면 나누어떨어지고, ${b}를 나누어도 나누어떨어집니다. 이러한 자연수 중 가장 큰 수를 구하세요.`,
+        answer: getGCD(a, b)
+      };
     }
   ];
 

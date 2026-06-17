@@ -274,7 +274,10 @@ export class Boss {
     
     // Apply hit shake or gimmick vibration
     let shakeX = 0;
-    if (this.isHitFlash > 0) {
+    if (this.hp <= 0) {
+      // Violent shake when dying
+      shakeX = (Math.random() - 0.5) * 12;
+    } else if (this.isHitFlash > 0) {
       shakeX = Math.sin(Date.now() * 0.1) * 3;
     } else if (this.isGimmickActive) {
       // Slow rhythmic vibration during math gimmick
@@ -299,10 +302,18 @@ export class Boss {
 
     if (this.currentImg.complete && this.currentImg.naturalWidth !== 0) {
       // Draw nano banana2 sprite image
+      if (this.hp <= 0) {
+        ctx.globalAlpha = Math.max(0.12, (Date.now() % 120) / 120); // rapid flicker
+      }
       ctx.drawImage(this.currentImg, -this.radius, -this.radius, this.radius * 2, this.radius * 2);
       
       // Draw hit overlay if hit
-      if (this.isHitFlash > 0 && Math.floor(this.isHitFlash / 2) % 2 === 0) {
+      if (this.hp <= 0) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.45)'; // red overlay when dying
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (this.isHitFlash > 0 && Math.floor(this.isHitFlash / 2) % 2 === 0) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
         ctx.beginPath();
         ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
@@ -310,7 +321,9 @@ export class Boss {
       }
     } else {
       // Fallback shapes
-      if (this.isHitFlash > 0 && Math.floor(this.isHitFlash / 2) % 2 === 0) {
+      if (this.hp <= 0) {
+        ctx.fillStyle = '#ff0000'; // Red fallback shape when dying
+      } else if (this.isHitFlash > 0 && Math.floor(this.isHitFlash / 2) % 2 === 0) {
         ctx.fillStyle = '#ffffff';
       } else {
         ctx.fillStyle = this.color;

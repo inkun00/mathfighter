@@ -43,6 +43,8 @@ let problemProgress = 0;
 let stageTimer = 90; // Seconds left to survive regular stages
 let problemTimer = 30; // Seconds left for current math question
 let problemSerial = 0;
+let stageClearTimer = 0;
+let bossDeathPos = null;
 
 const STAGE_BACKGROUNDS = [
   { minStage: 40, src: '/assets/backgrounds/stage_40_cosmic.png' },
@@ -191,8 +193,10 @@ function saveSessionSnapshot() {
     return;
   }
 
+  const savedState = gameState === 'stageClear' ? 'shop' : gameState;
+
   sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-    gameState,
+    gameState: savedState,
     currentStage,
     stageTimer,
     problemTimer,
@@ -1351,7 +1355,7 @@ function gameLoop() {
     hideStartScreen();
   }
 
-  if (gameState === 'play') {
+  if (gameState === 'play' || gameState === 'stageClear') {
     update();
     draw();
   }
@@ -1366,6 +1370,11 @@ function gameLoop() {
 
 // Game Physics, Collision, Timer update
 function update() {
+  if (gameState === 'stageClear') {
+    updateStageClear();
+    return;
+  }
+
   const now = Date.now();
 
   // Determine active problem (accounts for boss gimmick)
@@ -1471,11 +1480,7 @@ function update() {
     }
 
     if (boss.hp <= 0) {
-      // Boss defeated! Give massive reward & clear stage
-      addGold(500 * (currentStage / 10)); // Reward scales with boss tier
-      player.gold = getGold();
-      boss = null;
-      openShopScreen(); // Load lounge room
+      triggerStageClear(true);
       return;
     }
   }
@@ -1766,9 +1771,7 @@ function update() {
 
   // 12. Clear regular stages after surviving for 90 seconds.
   if (!boss && currentStage % 10 !== 0 && stageTimer <= 0) {
-    addGold(200);
-    player.gold = getGold();
-    openShopScreen();
+    triggerStageClear(false);
     return;
   }
 
@@ -1937,5 +1940,131 @@ function draw() {
     ctx.fillText(tp.text, tp.x, tp.y);
   });
   textParticles = textParticles.filter(tp => tp.alpha > 0);
+  ctx.restore();
+
+  if (gameState === 'stageClear') {
+    drawStageClearBanner();
+  }
+}
+
+function triggerStageClear(isBoss = false) {
+  // Clear standard monsters and enemy bullets so the screen becomes clean
+  monsters = [];
+  monsterProjectiles = [];
+
+  if (isBoss && boss) {
+    const goldReward = 500 * (currentStage / 10);
+    addGold(goldReward);
+    player.gold = getGold();
+    spawnTextParticle(boss.x, boss.y - 40, `BOSS DEFEATED! +${goldReward}G`, '#ffd700');
+    
+    bossDeathPos = { x: boss.x, y: boss.y };
+    stageClearTimer = 180; // 3 seconds (180 frames)
+  } else {
+    const goldReward = 200;
+    addGold(goldReward);
+    player.gold = getGold();
+    spawnTextParticle(player.x, player.y - 30, `STAGE SURVIVED! +${goldReward}G`, '#39ff14');
+    
+    bossDeathPos = null;
+    stageClearTimer = 120; // 2 seconds (120 frames)
+  }
+  
+  gameState = 'stageClear';
+  saveSessionSnapshot();
+}
+
+function updateStageClear() {
+  stageClearTimer--;
+
+  // Update projectiles, items, hit effects
+  projectiles.forEach(p => p.update(monsters, { x: player.x, y: player.y }));
+  projectiles = projectiles.filter(p => !p.isDead);
+
+  monsterProjectiles.forEach(mp => mp.update(worldWidth, worldHeight));
+  monsterProjectiles = monsterProjectiles.filter(mp => !mp.isDead);
+
+  dropItems.forEach(item => item.update({ x: player.x, y: player.y }, player.magnetRange));
+  dropItems = dropItems.filter(item => !item.isDead);
+
+  // If boss died, spawn continuous massive explosions at bossDeathPos
+  if (bossDeathPos && stageClearTimer > 30) {
+    if (stageClearTimer % 6 === 0) {
+      const rx = bossDeathPos.x + (Math.random() - 0.5) * 160;
+      const ry = bossDeathPos.y + (Math.random() - 0.5) * 160;
+      const mockProj = { id: 22, splashRadius: 100, behavior: 'explosive' };
+      spawnHitEffect(rx, ry, mockProj, 1.8);
+
+      if (stageClearTimer % 12 === 0) {
+        const textOption = ["BOOM!", "CRASH!", "KABOOM!", "DESTROYED!"][Math.floor(Math.random() * 4)];
+        spawnTextParticle(rx, ry, textOption, "#ff3300");
+      }
+    }
+  }
+
+  if (stageClearTimer <= 0) {
+    boss = null;
+    bossDeathPos = null;
+    openShopScreen();
+  }
+}
+
+function drawStageClearBanner() {
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  ctx.save();
+
+  // 1. Draw dark backdrop
+  ctx.fillStyle = 'rgba(8, 3, 18, 0.65)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 2. Draw retro container box
+  const boxW = Math.min(520, canvas.width * 0.85);
+  const boxH = 150;
+
+  ctx.fillStyle = 'rgba(26, 0, 51, 0.88)';
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 4;
+  ctx.shadowColor = '#00ffff';
+  ctx.shadowBlur = 18;
+
+  ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+  ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
+
+  // Draw inner gold trim line
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#ffd700';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx - boxW / 2 + 6, cy - boxH / 2 + 6, boxW - 12, boxH - 12);
+
+  // 3. Draw Stage Clear Text
+  const scale = 1.0 + Math.sin(Date.now() * 0.01) * 0.04; // idle pulsing
+
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Neon Green text for STAGE CLEAR
+  ctx.fillStyle = '#39ff14';
+  ctx.shadowColor = '#39ff14';
+  ctx.shadowBlur = 12;
+  ctx.font = 'bold 36px "Press Start 2P", sans-serif';
+  ctx.fillText("STAGE CLEAR!", 0, -22);
+
+  // Golden text for stage indicator
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 16px "Press Start 2P", sans-serif';
+  const stageType = currentStage % 10 === 0 ? "BOSS DEFEATED!" : "SURVIVED!";
+  ctx.fillText(`STAGE ${currentStage} - ${stageType}`, 0, 26);
+
+  // Small loading hint
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText("대기실 상점으로 이동 중...", 0, 52);
+
   ctx.restore();
 }
