@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   // Try multiple public proxy endpoints sequentially to bypass Padlet's IP block & proxy outages
   const proxyUrls = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+    `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`, // Fixed: added trailing slash before query
     `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
   ];
 
@@ -26,9 +26,8 @@ export default async function handler(req, res) {
 
   for (const proxyUrl of proxyUrls) {
     try {
-      // 5 seconds timeout per proxy attempt
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
       
       const response = await fetch(proxyUrl, {
         headers: {
@@ -41,7 +40,6 @@ export default async function handler(req, res) {
 
       if (response.ok) {
         contents = await response.text();
-        // Check if the response is actually valid HTML and not a Cloudflare error block
         if (contents.length > 500 && !contents.includes("error code: 520") && !contents.includes("error code: 522") && !contents.includes("Cloudflare")) {
           break;
         }

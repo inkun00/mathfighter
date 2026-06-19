@@ -985,7 +985,7 @@ function setupEventListeners() {
       // Try Proxy 5: api.codetabs.com (Fallback 4)
       if (!contents) {
         try {
-          const proxyUrl4 = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+          const proxyUrl4 = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`;
           const response4 = await fetchWithTimeout(proxyUrl4, {}, 3500);
           if (response4.ok) {
             contents = await response4.text();
