@@ -940,18 +940,17 @@ function setupEventListeners() {
         console.warn("Proxy 1 (Local Node.js Middleware) failed:", errLocal);
       }
 
-      // Try Proxy 2: allorigins.win (Fallback 1)
+      // Try Proxy 2: allorigins.win raw (Fallback 1)
       if (!contents) {
         try {
-          const proxyUrl1 = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+          const proxyUrl1 = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
           const response1 = await fetchWithTimeout(proxyUrl1, {}, 3500);
           if (response1.ok) {
-            const json = await response1.json();
-            contents = json.contents;
-            console.log("SUCCESS using Proxy 2 (allorigins)");
+            contents = await response1.text();
+            console.log("SUCCESS using Proxy 2 (allorigins raw)");
           }
         } catch (err1) {
-          console.warn("Proxy 2 (allorigins) failed:", err1);
+          console.warn("Proxy 2 (allorigins raw) failed:", err1);
         }
       }
 
