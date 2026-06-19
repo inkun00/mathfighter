@@ -35,3 +35,6 @@ out/
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch scripts
+scratch/

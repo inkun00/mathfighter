@@ -8,7 +8,7 @@ import {
   getUpgradeCost, getUpgradeLevel, purchaseUpgrade, purchaseWeapon, getOwnedWeapons, equipWeapon,
   recordWrongArea, getStatValue, getWeaponLevel, getWeaponUpgradeCost, getWeaponUpgradeSummary, upgradeWeapon
 } from './shop.js';
-import { openBrainTrainingModal, openExamModal } from './exam.js?v=brain-stage-reward';
+import { openBrainTrainingModal, openExamModal } from './exam.js';
 import { showCertificate, saveCertificate } from './certificate.js';
 
 const KNOWN_CATEGORIES = [
@@ -917,6 +917,11 @@ function setupEventListeners() {
       return;
     }
 
+    if (!url.includes('/wish/') && !url.includes('/posts/')) {
+      errorEl.innerText = "오류: 입력하신 주소는 패들릿 보드 주소입니다. 보드 안의 퀴즈 게시물(Post)을 클릭하여 '게시물 열기'를 하신 후, 해당 개별 게시물 주소를 복사해 입력해 주세요.";
+      return;
+    }
+
     try {
       errorEl.innerText = "문제를 구성하는 중입니다...";
       loadBtn.disabled = true;
@@ -961,6 +966,34 @@ function setupEventListeners() {
           }
         } catch (err2) {
           console.warn("Proxy 3 (corsproxy.io) failed:", err2);
+        }
+      }
+
+      // Try Proxy 4: thingproxy.freeboard.io (Fallback 3)
+      if (!contents) {
+        try {
+          const proxyUrl3 = `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(url)}`;
+          const response3 = await fetchWithTimeout(proxyUrl3, {}, 3500);
+          if (response3.ok) {
+            contents = await response3.text();
+            console.log("SUCCESS using Proxy 4 (thingproxy)");
+          }
+        } catch (err3) {
+          console.warn("Proxy 4 (thingproxy) failed:", err3);
+        }
+      }
+
+      // Try Proxy 5: api.codetabs.com (Fallback 4)
+      if (!contents) {
+        try {
+          const proxyUrl4 = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+          const response4 = await fetchWithTimeout(proxyUrl4, {}, 3500);
+          if (response4.ok) {
+            contents = await response4.text();
+            console.log("SUCCESS using Proxy 5 (codetabs)");
+          }
+        } catch (err4) {
+          console.warn("Proxy 5 (codetabs) failed:", err4);
         }
       }
 
