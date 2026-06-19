@@ -1,4 +1,4 @@
-import { generateBrainTrainingQuestions, getSimilarQuestions } from './mathEngine.js';
+import { generateBrainTrainingQuestions, getSimilarQuestions, isCustomMode } from './mathEngine.js';
 import { getWrongAreas, addGold, clearWrongAreas } from './shop.js';
 
 let currentQuestions = [];
@@ -36,7 +36,7 @@ function renderQuestionList(listContainer, questions, inputPrefix = 'question') 
       qDiv.appendChild(optionsContainer);
     } else {
       const input = document.createElement('input');
-      input.type = 'number';
+      input.type = isCustomMode() ? 'text' : 'number';
       input.className = 'exam-input-text';
       input.name = `${inputPrefix}-${q.id}`;
       input.placeholder = '답 입력';
@@ -92,10 +92,22 @@ function evaluateAnswers(onCloseCallback) {
         correctCount++;
       }
     } else {
-      const cleanUser = userAns.replace(/[^0-9-]/g, '');
-      const cleanAns = q.answer.replace(/[^0-9-]/g, '');
-      if (cleanUser !== '' && parseInt(cleanUser, 10) === parseInt(cleanAns, 10)) {
-        correctCount++;
+      if (isCustomMode()) {
+        const cleanUser = userAns.replace(/\s+/g, '').toLowerCase();
+        const answers = q.answers || [q.answer];
+        const isCorrect = answers.some(ans => {
+          const cleanAns = ans.replace(/\s+/g, '').toLowerCase();
+          return cleanUser !== '' && cleanUser === cleanAns;
+        });
+        if (isCorrect) {
+          correctCount++;
+        }
+      } else {
+        const cleanUser = userAns.replace(/[^0-9-]/g, '');
+        const cleanAns = q.answer.replace(/[^0-9-]/g, '');
+        if (cleanUser !== '' && parseInt(cleanUser, 10) === parseInt(cleanAns, 10)) {
+          correctCount++;
+        }
       }
     }
   });
@@ -154,10 +166,22 @@ function evaluateBrainTraining(stage, onCloseCallback) {
 
   brainTrainingQuestions.forEach(q => {
     const userAns = getQuestionAnswer(q, 'brain-question');
-    const cleanUser = userAns.replace(/[^0-9-]/g, '');
-    const cleanAns = q.answer.replace(/[^0-9-]/g, '');
-    if (cleanUser !== '' && parseInt(cleanUser, 10) === parseInt(cleanAns, 10)) {
-      correctCount++;
+    if (isCustomMode()) {
+      const cleanUser = userAns.replace(/\s+/g, '').toLowerCase();
+      const answers = q.answers || [q.answer];
+      const isCorrect = answers.some(ans => {
+        const cleanAns = ans.replace(/\s+/g, '').toLowerCase();
+        return cleanUser !== '' && cleanUser === cleanAns;
+      });
+      if (isCorrect) {
+        correctCount++;
+      }
+    } else {
+      const cleanUser = userAns.replace(/[^0-9-]/g, '');
+      const cleanAns = q.answer.replace(/[^0-9-]/g, '');
+      if (cleanUser !== '' && parseInt(cleanUser, 10) === parseInt(cleanAns, 10)) {
+        correctCount++;
+      }
     }
   });
 

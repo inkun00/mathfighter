@@ -1,4 +1,5 @@
 import { getStatValue } from './shop.js';
+import { isCustomMode } from './mathEngine.js';
 
 // Draws a 5-axis Radar Chart for math areas performance analysis
 export function drawRadarChart(correctAnswers, totalAnswers) {
@@ -13,7 +14,9 @@ export function drawRadarChart(correctAnswers, totalAnswers) {
   const centerY = canvas.height / 2;
   const radius = 80;
   
-  const labels = ["약수", "배수", "관계", "공약수", "공배수"];
+  const labels = isCustomMode()
+    ? ["단어 매칭", "카테고리 분류", "순발력", "집중력", "정확도"]
+    : ["약수", "배수", "관계", "공약수", "공배수"];
   const numAxes = labels.length;
 
   // Calculate scores (default to 60% if no questions answered yet to prevent empty graphs)
@@ -96,19 +99,32 @@ export function showCertificate(player, correctAnswers, totalAnswers, finalStage
   document.getElementById("certScreen").classList.remove("hidden");
   document.getElementById("certNameText").innerText = player.name;
   document.getElementById("certStageText").innerText = `${finalStage} STAGE`;
+
+  const titleEl = document.querySelector("#certContainer h1");
+  if (titleEl) {
+    titleEl.innerText = isCustomMode() ? "교과 분류 특공대 수료 인증서" : "수학 특공대 수료 인증서";
+  }
+  
+  const descEl = document.querySelector("#certContainer .cert-desc");
+  if (descEl) {
+    descEl.innerText = isCustomMode()
+      ? `위 특공대원 ${player.name}은(는) 다양한 교과 지식과 생물 분류의 거친 전투에서 훌륭한 용기와 지혜로 미션을 완수하였기에 이 인증서를 수여합니다.`
+      : `위 특공대원 ${player.name}은(는) 약수와 배수의 거친 수학 전투에서 훌륭한 용기와 지혜로 미션을 완수하였기에 이 인증서를 수여합니다.`;
+  }
   
   // Calculate final score based on level, gold and stats
   const finalScore = finalStage * 1000 + player.level * 1500 + Math.floor(player.gold * 0.5);
   document.getElementById("certScoreText").innerText = finalScore.toLocaleString();
 
   // Evaluation Grades
+  const modePrefix = isCustomMode() ? "분류" : "수학";
   let grade = "예비 특공대원";
-  if (player.level >= 45) grade = "수학 엠페러";
-  else if (player.level >= 30) grade = "수학 마스터";
-  else if (player.level >= 15) grade = "수학 특공대장";
-  if (finalStage >= 45) grade = "수학 슈퍼스타";
-  else if (finalStage >= 30) grade = "수학 마스터";
-  else if (finalStage >= 15) grade = "수학 특공대";
+  if (player.level >= 45) grade = `${modePrefix} 엠페러`;
+  else if (player.level >= 30) grade = `${modePrefix} 마스터`;
+  else if (player.level >= 15) grade = `${modePrefix} 특공대장`;
+  if (finalStage >= 45) grade = `${modePrefix} 슈퍼스타`;
+  else if (finalStage >= 30) grade = `${modePrefix} 마스터`;
+  else if (finalStage >= 15) grade = `${modePrefix} 특공대`;
   else grade = "예비 특공대";
   document.getElementById("certGradeText").innerText = grade;
 
@@ -178,9 +194,15 @@ export function showCertificate(player, correctAnswers, totalAnswers, finalStage
     5: "최종 보스의 차원 융합 수학 기믹에 훌륭하게 대처한 역량이 돋보입니다. 수료 이후 중학교 1학년 소인수분해 과정으로 자연스럽게 연계 학습을 권장합니다."
   };
 
-  strengthElement.innerText = strengthTexts[bestAreaIdx];
-  weaknessElement.innerText = weaknessTexts[worstAreaIdx];
-  commentElement.innerText = commentTexts[bestAreaIdx];
+  if (isCustomMode()) {
+    strengthElement.innerText = "다양한 교과 단어와 카테고리의 관계를 빠르고 정확하게 분석해내는 능력이 탁월합니다.";
+    weaknessElement.innerText = "특정 단어들이 어떤 분류에 속하는지 헷갈리지 않도록 복습을 통한 보완 학습을 추천합니다.";
+    commentElement.innerText = "특공대의 정식 수료원으로서, 교과 퀴즈의 다양한 함정을 훌륭하게 극복하고 지혜롭게 문제를 해결한 점을 높이 칭찬합니다. 앞으로의 다른 심화 과정도 훌륭히 수행할 준비가 되었습니다!";
+  } else {
+    strengthElement.innerText = strengthTexts[bestAreaIdx];
+    weaknessElement.innerText = weaknessTexts[worstAreaIdx];
+    commentElement.innerText = commentTexts[bestAreaIdx];
+  }
 }
 
 // Convert HTML area to Canvas and download as PNG image file
@@ -195,7 +217,7 @@ export function saveCertificate() {
   }).then(canvas => {
     const dataUrl = canvas.toDataURL("image/png");
     const link = document.createElement("a");
-    link.download = `수학특공대_인증서.png`;
+    link.download = isCustomMode() ? `교과분류특공대_인증서.png` : `수학특공대_인증서.png`;
     link.href = dataUrl;
     link.click();
   });

@@ -1,7 +1,7 @@
 import { Player } from './player.js';
 import { spawnMonster, restoreMonster } from './monster.js';
 import { Boss } from './boss.js';
-import { generateProblem } from './mathEngine.js';
+import { generateProblem, isCustomMode, setCustomQuizData, getCustomQuizData } from './mathEngine.js';
 import { 
   loadState, resetState, getGold, addGold, 
   getEquippedWeapons, WEAPONS_DB, UPGRADES_DB, 
@@ -10,6 +10,67 @@ import {
 } from './shop.js';
 import { openBrainTrainingModal, openExamModal } from './exam.js?v=brain-stage-reward';
 import { showCertificate, saveCertificate } from './certificate.js';
+
+const KNOWN_CATEGORIES = [
+  "포유류", "조류(새)", "조류", "파충류", "양서류", "어류", "곤충류",
+  "현화식물(꽃 피는 식물)", "현화식물", "침엽수", "양치식물", "이끼류",
+  "버섯류 및 균류", "버섯류", "단세포/다세포 원생생물", "원생생물",
+  "대표 세균류", "세균류", "대표 고세균", "고세균", "균류"
+];
+
+function decodeHtmlEntities(str) {
+  const txt = document.createElement("textarea");
+  txt.innerHTML = str;
+  return txt.value;
+}
+
+function fetchWithTimeout(url, options = {}, timeout = 3500) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  return fetch(url, { ...options, signal: controller.signal })
+    .then(res => {
+      clearTimeout(id);
+      return res;
+    })
+    .catch(err => {
+      clearTimeout(id);
+      throw err;
+    });
+}
+
+function parsePadletText(text) {
+  const parts = text.split('●');
+  const categories = [];
+
+  for (let i = 1; i < parts.length; i++) {
+    const rawPart = parts[i].trim();
+    if (!rawPart) continue;
+
+    // Split by comma: first element = category name, rest = items
+    const items = rawPart.split(',').map(item => item.trim()).filter(Boolean);
+    if (items.length < 2) continue; // Need at least a name + 1 item
+
+    const catName = items[0];
+    const catItems = items.slice(1);
+
+    // Clean trailing emojis from the last item
+    const lastIdx = catItems.length - 1;
+    if (lastIdx >= 0) {
+      catItems[lastIdx] = catItems[lastIdx].split(/🌱|🐾|🍄|🧫|🦠|🧬/)[0].trim();
+    }
+
+    const cleanItems = catItems.map(x => x.trim()).filter(Boolean);
+    if (catName && cleanItems.length > 0) {
+      categories.push({
+        name: catName,
+        items: cleanItems
+      });
+    }
+  }
+
+  console.log('[Parser] Parsed categories:', categories.map(c => `${c.name}(${c.items.length})`));
+  return categories;
+}
 
 // Game variables
 let canvas, ctx;
@@ -206,6 +267,17 @@ function saveSessionSnapshot() {
     correctAnswers,
     totalAnswers,
     combo,
+    customQuizData: getCustomQuizData(),
+    currentProblem: currentProblem ? {
+      area: currentProblem.area,
+      text: currentProblem.text,
+      targetNum: currentProblem.targetNum,
+      type: currentProblem.type,
+      options: currentProblem.options,
+      wrongAnswers: currentProblem.wrongAnswers,
+      requiredCount: currentProblem.requiredCount
+    } : null,
+    problemProgress,
     monsters: monsters
       .filter(monster => monster.hp > 0)
       .slice(0, 300)
@@ -264,6 +336,10 @@ function restoreSessionIfNeeded() {
     totalAnswers = saved.totalAnswers || totalAnswers;
     combo = saved.combo || 0;
 
+    if (saved.customQuizData) {
+      setCustomQuizData(saved.customQuizData);
+    }
+
     player = new Player(worldWidth / 2, worldHeight / 2, saved.player.name || 'Player', selectedGender);
     player.level = saved.player.level || 1;
     player.exp = saved.player.exp || 0;
@@ -282,6 +358,38 @@ function restoreSessionIfNeeded() {
       openShopScreen();
     } else {
       loadStage(currentStage);
+      
+      if (saved.currentProblem) {
+        currentProblem = saved.currentProblem;
+        if (isCustomMode()) {
+          const quizData = getCustomQuizData();
+          const target = quizData ? quizData.find(q => q.name === currentProblem.targetNum) : null;
+          if (target) {
+            currentProblem.checkAnswer = (val) => target.items.includes(val);
+          } else {
+            currentProblem.checkAnswer = (val) => currentProblem.options.includes(val);
+          }
+        } else {
+          const type = currentProblem.type;
+          const targetNum = currentProblem.targetNum;
+          if (type === 'divisor') {
+            currentProblem.checkAnswer = (num) => targetNum % num === 0;
+          } else if (type === 'multiple') {
+            currentProblem.checkAnswer = (num) => num > 0 && num % targetNum === 0;
+          } else if (type === 'relation') {
+            currentProblem.checkAnswer = (num) => currentProblem.options.includes(num);
+          } else if (type === 'gcd') {
+            currentProblem.checkAnswer = (num) => num === targetNum;
+          } else if (type === 'lcm') {
+            currentProblem.checkAnswer = (num) => num === targetNum;
+          }
+        }
+      }
+
+      if (Number.isFinite(saved.problemProgress)) {
+        problemProgress = saved.problemProgress;
+      }
+
       stageTimer = Number.isFinite(saved.stageTimer) ? saved.stageTimer : stageTimer;
       problemTimer = Number.isFinite(saved.problemTimer) ? saved.problemTimer : problemTimer;
       player.hp = Math.floor(Math.max(1, Math.min(player.maxHp, saved.player.hp || player.maxHp)));
@@ -722,6 +830,9 @@ function setupEventListeners() {
     gameState = 'start';
     blurActiveControl();
 
+    // Clear custom mode when starting a regular math game
+    setCustomQuizData(null);
+
     const nameInput = document.getElementById('playerNameInput');
     const playerName = nameInput.value.trim() || "홍길동";
     
@@ -735,6 +846,167 @@ function setupEventListeners() {
 
     // Load first Stage
     loadStage(currentStage);
+  });
+
+  // Custom Game Button - Show URL input modal
+  document.getElementById('customGameBtn').addEventListener('click', () => {
+    document.getElementById('customUrlModal').classList.remove('hidden');
+    document.getElementById('urlLoadError').innerText = "";
+
+    // Fill in last saved URL if exists
+    const savedUrl = localStorage.getItem('math_fighter_custom_quiz_url');
+    if (savedUrl) {
+      document.getElementById('padletUrlInput').value = savedUrl;
+    }
+
+    // Toggle saved game button visibility
+    const savedData = localStorage.getItem('math_fighter_custom_quiz_data');
+    const loadSavedBtn = document.getElementById('loadSavedCustomGameBtn');
+    if (savedData && loadSavedBtn) {
+      loadSavedBtn.style.display = 'block';
+    } else if (loadSavedBtn) {
+      loadSavedBtn.style.display = 'none';
+    }
+  });
+
+  // Close Custom Game Modal
+  document.getElementById('closeUrlModalBtn').addEventListener('click', () => {
+    document.getElementById('customUrlModal').classList.add('hidden');
+  });
+
+  // Load Saved Custom Game Action
+  document.getElementById('loadSavedCustomGameBtn').addEventListener('click', () => {
+    const savedData = localStorage.getItem('math_fighter_custom_quiz_data');
+    if (!savedData) return;
+    try {
+      const categories = JSON.parse(savedData);
+      setCustomQuizData(categories);
+      document.getElementById('customUrlModal').classList.add('hidden');
+      
+      const nameInput = document.getElementById('playerNameInput');
+      const playerName = nameInput.value.trim() || "홍길동";
+      
+      resetRunData();
+      player = new Player(worldWidth / 2, worldHeight / 2, playerName, selectedGender);
+      player.refreshStats();
+      loadStage(1);
+    } catch (err) {
+      document.getElementById('urlLoadError').innerText = "오류: 저장된 퀴즈 데이터를 불러오지 못했습니다.";
+    }
+  });
+
+  // Go to Padlet Web Page
+  document.getElementById('gotoPadletBtn').addEventListener('click', () => {
+    window.open('https://padlet.com/inkun02/padlet-55n4tbvqcfhzoa99', '_blank');
+  });
+
+  // Load Custom Game Action
+  document.getElementById('loadCustomGameBtn').addEventListener('click', async () => {
+    const urlInput = document.getElementById('padletUrlInput');
+    const url = urlInput.value.trim();
+    const errorEl = document.getElementById('urlLoadError');
+    const loadBtn = document.getElementById('loadCustomGameBtn');
+
+    if (!url) {
+      errorEl.innerText = "게시물 주소를 입력해 주세요.";
+      return;
+    }
+
+    if (!url.includes('padlet.com')) {
+      errorEl.innerText = "올바른 패들릿 주소가 아닙니다.";
+      return;
+    }
+
+    try {
+      errorEl.innerText = "문제를 구성하는 중입니다...";
+      loadBtn.disabled = true;
+
+      let contents = null;
+
+      // Try Proxy 1: Local Node.js Middleware (100% reliable, direct node-fetch)
+      try {
+        const localApiUrl = `/api/fetch-padlet?url=${encodeURIComponent(url)}`;
+        const responseLocal = await fetchWithTimeout(localApiUrl, {}, 15000);
+        if (responseLocal.ok) {
+          contents = await responseLocal.text();
+          console.log("SUCCESS using Proxy 1 (Local Node.js Middleware)");
+        }
+      } catch (errLocal) {
+        console.warn("Proxy 1 (Local Node.js Middleware) failed:", errLocal);
+      }
+
+      // Try Proxy 2: allorigins.win (Fallback 1)
+      if (!contents) {
+        try {
+          const proxyUrl1 = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+          const response1 = await fetchWithTimeout(proxyUrl1, {}, 3500);
+          if (response1.ok) {
+            const json = await response1.json();
+            contents = json.contents;
+            console.log("SUCCESS using Proxy 2 (allorigins)");
+          }
+        } catch (err1) {
+          console.warn("Proxy 2 (allorigins) failed:", err1);
+        }
+      }
+
+      // Try Proxy 3: corsproxy.io (Fallback 2)
+      if (!contents) {
+        try {
+          const proxyUrl2 = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+          const response2 = await fetchWithTimeout(proxyUrl2, {}, 3500);
+          if (response2.ok) {
+            contents = await response2.text();
+            console.log("SUCCESS using Proxy 3 (corsproxy.io)");
+          }
+        } catch (err2) {
+          console.warn("Proxy 3 (corsproxy.io) failed:", err2);
+        }
+      }
+
+      if (!contents) {
+        throw new Error("네트워크 연결 오류 또는 모든 프록시 경로가 차단되었습니다. 잠시 후 다시 시도해 주세요.");
+      }
+
+      // Find og:description or name="description"
+      const metaRegex = /<meta\s+(?:property="og:description"|name="description")\s+content="([^"]+)"/i;
+      const match = contents.match(metaRegex);
+      if (!match) throw new Error("게시물에서 교과 퀴즈 텍스트를 찾을 수 없습니다.");
+
+      const decodedText = decodeHtmlEntities(match[1]);
+      const categories = parsePadletText(decodedText);
+
+      if (categories.length === 0) {
+        throw new Error("분류 퀴즈 데이터를 파싱할 수 없습니다. 형식을 확인하세요.");
+      }
+
+      // Load quiz data and start game
+      setCustomQuizData(categories);
+
+      // Save custom game data & URL to localStorage
+      try {
+        localStorage.setItem('math_fighter_custom_quiz_data', JSON.stringify(categories));
+        localStorage.setItem('math_fighter_custom_quiz_url', url);
+      } catch (saveErr) {
+        console.warn("Failed to save custom quiz data to localStorage", saveErr);
+      }
+
+      document.getElementById('customUrlModal').classList.add('hidden');
+
+      // Start custom mode game
+      const nameInput = document.getElementById('playerNameInput');
+      const playerName = nameInput.value.trim() || "홍길동";
+      
+      resetRunData();
+      player = new Player(worldWidth / 2, worldHeight / 2, playerName, selectedGender);
+      player.refreshStats();
+      loadStage(1);
+
+    } catch (err) {
+      errorEl.innerText = `오류: ${err.message}`;
+    } finally {
+      loadBtn.disabled = false;
+    }
   });
 
   // Shop navigation tabs

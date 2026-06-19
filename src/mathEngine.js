@@ -3,6 +3,19 @@
  * Generates divisibility, multiple, GCD, LCM, and relationship problems based on stage level.
  */
 
+export function setCustomQuizData(data) {
+  window.customQuizData = data;
+}
+
+export function getCustomQuizData() {
+  return window.customQuizData || null;
+}
+
+export function isCustomMode() {
+  const data = getCustomQuizData();
+  return data !== null && data.length > 0;
+}
+
 // Helper to get all divisors of a number
 export function getDivisors(num) {
   const divisors = [];
@@ -28,6 +41,56 @@ export function getLCM(a, b) {
 }
 
 export function generateBrainTrainingQuestions(stage = 1) {
+  if (isCustomMode()) {
+    const quizData = getCustomQuizData();
+    const stamp = Date.now().toString(36);
+    const questions = [];
+    const used = new Set();
+    for (let i = 0; i < 3; i++) {
+      let q;
+      let attempts = 0;
+      do {
+        q = randomFrom(quizData);
+        attempts++;
+      } while (used.has(q.name) && attempts < 20);
+      used.add(q.name);
+
+      const correctAnswer = randomFrom(q.items);
+
+      // Collect wrong options from other questions
+      const wrongOptions = [];
+      quizData.forEach(other => {
+        if (other.name !== q.name) wrongOptions.push(...other.items);
+      });
+
+      if (i === 0 && wrongOptions.length >= 3) {
+        // Multiple choice
+        const options = [correctAnswer];
+        while (options.length < 4 && wrongOptions.length > 0) {
+          const wrong = wrongOptions.splice(Math.floor(Math.random() * wrongOptions.length), 1)[0];
+          if (!options.includes(wrong)) options.push(wrong);
+        }
+        questions.push({
+          id: `brain-${stamp}-${i + 1}`,
+          text: q.name,
+          options: shuffle(options),
+          answer: correctAnswer,
+          answers: q.items
+        });
+      } else {
+        // Short answer
+        questions.push({
+          id: `brain-${stamp}-${i + 1}`,
+          text: q.name,
+          options: [],
+          answer: correctAnswer,
+          answers: q.items
+        });
+      }
+    }
+    return questions;
+  }
+
   const difficulty = Math.max(1, Math.min(5, Math.ceil(stage / 10)));
   const divisorTargets = [
     [12, 16, 18, 20, 24, 27, 28, 30, 36, 40, 42],
@@ -211,6 +274,30 @@ function getDivisorTargets(stage) {
 }
 
 export function generateProblem(stage) {
+  if (isCustomMode()) {
+    const quizData = getCustomQuizData();
+    const target = randomFrom(quizData);
+    const requiredCount = Math.min(3, target.items.length);
+
+    // Build wrong-answer pool: all answers from OTHER questions
+    const wrongAnswers = [];
+    for (let i = 0; i < quizData.length; i++) {
+      if (quizData[i].name === target.name) continue;
+      wrongAnswers.push(...quizData[i].items);
+    }
+
+    return {
+      area: Math.floor(Math.random() * 5) + 1,
+      text: target.name,
+      targetNum: target.name,
+      type: 'custom_text',
+      options: target.items,
+      wrongAnswers,
+      requiredCount,
+      checkAnswer: (val) => target.items.includes(val)
+    };
+  }
+
   // Determine area based on stage difficulty ratios
   let area = 1;
   const rand = Math.random() * 100;
@@ -337,6 +424,29 @@ export function generateProblem(stage) {
 
 // Generate the pool of numbers to drop when a monster dies
 export function getRandomNumberPool(problem) {
+  if (!problem) return [1, 2, 3, 4, 5];
+
+  if (problem.type === 'custom_text') {
+    const correctAnswers = problem.options;
+    const allOtherItems = problem.wrongAnswers || [];
+
+    console.log('[MathEngine] question:', problem.targetNum,
+      '| correct:', correctAnswers,
+      '| wrongPool:', allOtherItems.length, allOtherItems.slice(0, 5));
+
+    // Build pool: 60% correct, 40% wrong
+    const pool = [];
+    for (let i = 0; i < 5; i++) {
+      if (allOtherItems.length > 0 && Math.random() >= 0.6) {
+        pool.push(allOtherItems[Math.floor(Math.random() * allOtherItems.length)]);
+      } else {
+        pool.push(correctAnswers[Math.floor(Math.random() * correctAnswers.length)]);
+      }
+    }
+
+    return pool;
+  }
+
   const correctOnes = [...problem.options];
   const pool = [];
   const correctNumberChance = 0.725; // Raises selected correct-number odds by about 50%.
@@ -465,6 +575,72 @@ function getSimilarQuestionsLegacy(wrongAreas) {
 }
 
 export function getSimilarQuestions(wrongAreas) {
+  if (isCustomMode()) {
+    const quizData = getCustomQuizData();
+    const questions = [];
+    const used = new Set();
+
+    for (let i = 0; i < 3; i++) {
+      let q;
+      let attempts = 0;
+      do {
+        q = randomFrom(quizData);
+        attempts++;
+      } while (used.has(q.name) && attempts < 20);
+      used.add(q.name);
+
+      const correctAnswer = randomFrom(q.items);
+
+      // Collect wrong options from other questions
+      const wrongPool = [];
+      quizData.forEach(other => {
+        if (other.name !== q.name) wrongPool.push(...other.items);
+      });
+
+      if (i === 0) {
+        // Q1: 객관식 - 정답 고르기
+        const options = [correctAnswer];
+        const tempWrong = [...wrongPool];
+        while (options.length < 4 && tempWrong.length > 0) {
+          const wrong = tempWrong.splice(Math.floor(Math.random() * tempWrong.length), 1)[0];
+          if (!options.includes(wrong)) options.push(wrong);
+        }
+        questions.push({
+          id: i + 1,
+          area: 1,
+          text: q.name,
+          options: shuffle(options),
+          answer: correctAnswer,
+          answers: q.items
+        });
+      } else if (i === 1) {
+        // Q2: 객관식 - 오답 고르기
+        let fakeAnswer = wrongPool.length > 0 ? randomFrom(wrongPool) : '없음';
+        const correctOptions = shuffle([...q.items]).slice(0, Math.min(3, q.items.length));
+        const options = [...correctOptions, fakeAnswer];
+        questions.push({
+          id: i + 1,
+          area: 2,
+          text: `${q.name} - 다음 중 틀린 답은?`,
+          options: shuffle(options),
+          answer: fakeAnswer,
+          answers: [fakeAnswer]
+        });
+      } else {
+        // Q3: 주관식
+        questions.push({
+          id: i + 1,
+          area: 3,
+          text: q.name,
+          options: [],
+          answer: correctAnswer,
+          answers: q.items
+        });
+      }
+    }
+    return questions;
+  }
+
   const baseAreas = wrongAreas && wrongAreas.length > 0 ? [...wrongAreas] : [1, 2, 4];
   const areasToUse = [];
 

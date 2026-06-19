@@ -11,7 +11,7 @@ export class DropItem {
     this.value = value; // Numerical value for Exp amount, or math answer
     this.label = label; // Visible label (e.g. number string)
     this.problemId = problemId;
-    this.radius = type === 'number' ? 22 : 6;
+    this.radius = type === 'number' ? Math.max(22, 10 + String(label || "").length * 6) : 6;
     this.isDead = false;
     this.magnetSpeed = 0;
     this.createdTime = Date.now();
@@ -57,21 +57,42 @@ export class DropItem {
       ctx.closePath();
       ctx.fill();
     } else if (this.type === 'number') {
-      // Draw circular retro coin (Solid yellow background for high visibility)
+      // Draw capsule/round-rect coin for text support
+      const textWidth = ctx.measureText ? ctx.measureText(this.label).width : this.label.length * 9;
+      const paddingX = 14;
+      const boxWidth = Math.max(44, textWidth + paddingX * 2);
+      const boxHeight = 36;
+      
       ctx.fillStyle = '#ffe082';
       ctx.strokeStyle = '#ffb300';
       ctx.lineWidth = 3;
+      
       ctx.beginPath();
-      ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+      const rx = -boxWidth / 2;
+      const ry = -boxHeight / 2;
+      const r = 12; // corner radius
+      ctx.moveTo(rx + r, ry);
+      ctx.lineTo(rx + boxWidth - r, ry);
+      ctx.quadraticCurveTo(rx + boxWidth, ry, rx + boxWidth, ry + r);
+      ctx.lineTo(rx + boxWidth, ry + boxHeight - r);
+      ctx.quadraticCurveTo(rx + boxWidth, ry + boxHeight, rx + boxWidth - r, ry + boxHeight);
+      ctx.lineTo(rx + r, ry + boxHeight);
+      ctx.quadraticCurveTo(rx, ry + boxHeight, rx, ry + boxHeight - r);
+      ctx.lineTo(rx, ry + r);
+      ctx.quadraticCurveTo(rx, ry, rx + r, ry);
+      ctx.closePath();
       ctx.fill();
       ctx.stroke();
 
-      // Draw numerical label (Dark purple for maximum contrast)
+      // Update radius dynamically for collision detection
+      this.radius = boxWidth / 2;
+
+      // Draw numerical/text label
       ctx.fillStyle = '#1a0033';
-      ctx.font = 'bold 16px sans-serif';
+      ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(this.label, 0, 1); // 1px vertical offset adjust
+      ctx.fillText(this.label, 0, 1);
     } else if (this.type === 'bomb') {
       ctx.fillStyle = '#ff0055';
       ctx.beginPath();
@@ -666,7 +687,7 @@ export class Monster {
     }
 
     // 4. Drop Numbers (52% rate, increased by 30% from the previous 40%)
-    if (Math.random() < 0.52) {
+    if (problem && Math.random() < 0.52) {
       const numbers = getRandomNumberPool(problem);
       // Pick one randomly from pool
       const selected = numbers[Math.floor(Math.random() * numbers.length)];

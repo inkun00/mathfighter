@@ -39,6 +39,7 @@
         </div>
         
         <button id="startGameBtn" class="pixel-btn">게임 시작</button>
+        <button id="customGameBtn" class="pixel-btn secondary-btn" style="margin-top: 10px;">다른 문제로 플레이</button>
       </div>
       <div class="instructions-box">
         <h3>[ 게임 조작 방법 ]</h3>
@@ -260,6 +261,26 @@
       <div class="cert-actions">
         <button id="saveCertBtn" class="pixel-btn">인증서 이미지 파일 저장 (PNG)</button>
         <button id="restartGameBtn" class="pixel-btn exit-btn">게임 완전히 다시 시작</button>
+      </div>
+    </div>
+
+    <!-- 6. 패들릿 URL 입력 팝업 모달 -->
+    <div id="customUrlModal" class="modal hidden">
+      <div class="modal-content pixel-box">
+        <h2>다른 문제로 플레이</h2>
+        <p class="modal-desc">패들릿 게시물 주소를 입력하여 교과 분류 퀴즈를 생성하세요.</p>
+        <input type="url" id="padletUrlInput" placeholder="https://padlet.com/..." style="width: 90%; max-width: 400px; padding: 12px; margin: 15px auto; display: block;">
+        <div id="urlLoadError" class="red-text" style="margin-bottom: 15px; font-size: 11px; font-family: var(--font-retro); min-height: 15px;"></div>
+        <div class="modal-actions" style="display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;">
+          <div style="display: flex; justify-content: center; gap: 14px; width: 100%;">
+            <button id="closeUrlModalBtn" class="pixel-btn exit-btn">취소</button>
+            <button id="loadCustomGameBtn" class="pixel-btn">새로 불러오기</button>
+          </div>
+          <div style="display: flex; justify-content: center; gap: 14px; width: 100%;">
+            <button id="loadSavedCustomGameBtn" class="pixel-btn secondary-btn" style="display: none;">이전 문제로 게임하기</button>
+            <button id="gotoPadletBtn" class="pixel-btn secondary-btn" style="background-color: #ff6b6b; border-color: #e05a5a; color: #fff;">패들릿으로 이동</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
