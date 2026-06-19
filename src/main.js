@@ -944,7 +944,7 @@ function setupEventListeners() {
       if (!contents) {
         try {
           const proxyUrl1 = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-          const response1 = await fetchWithTimeout(proxyUrl1, {}, 3500);
+          const response1 = await fetchWithTimeout(proxyUrl1, {}, 8000); // Increased timeout to 8s
           if (response1.ok) {
             contents = await response1.text();
             console.log("SUCCESS using Proxy 2 (allorigins raw)");
@@ -955,10 +955,11 @@ function setupEventListeners() {
       }
 
       // Try Proxy 3: corsproxy.io (Fallback 2)
+      // Note: Passing unencoded URL to avoid 403 Forbidden errors
       if (!contents) {
         try {
-          const proxyUrl2 = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-          const response2 = await fetchWithTimeout(proxyUrl2, {}, 3500);
+          const proxyUrl2 = `https://corsproxy.io/?${url}`;
+          const response2 = await fetchWithTimeout(proxyUrl2, {}, 8000); // Increased timeout to 8s
           if (response2.ok) {
             contents = await response2.text();
             console.log("SUCCESS using Proxy 3 (corsproxy.io)");
@@ -968,31 +969,18 @@ function setupEventListeners() {
         }
       }
 
-      // Try Proxy 4: thingproxy.freeboard.io (Fallback 3)
+      // Try Proxy 4: api.codetabs.com (Fallback 3)
+      // Note: Passing unencoded URL and using trailing slash to avoid 400 Bad Request
       if (!contents) {
         try {
-          const proxyUrl3 = `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(url)}`;
-          const response3 = await fetchWithTimeout(proxyUrl3, {}, 3500);
+          const proxyUrl3 = `https://api.codetabs.com/v1/proxy/?quest=${url}`;
+          const response3 = await fetchWithTimeout(proxyUrl3, {}, 8000); // Increased timeout to 8s
           if (response3.ok) {
             contents = await response3.text();
-            console.log("SUCCESS using Proxy 4 (thingproxy)");
+            console.log("SUCCESS using Proxy 4 (codetabs)");
           }
         } catch (err3) {
-          console.warn("Proxy 4 (thingproxy) failed:", err3);
-        }
-      }
-
-      // Try Proxy 5: api.codetabs.com (Fallback 4)
-      if (!contents) {
-        try {
-          const proxyUrl4 = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`;
-          const response4 = await fetchWithTimeout(proxyUrl4, {}, 3500);
-          if (response4.ok) {
-            contents = await response4.text();
-            console.log("SUCCESS using Proxy 5 (codetabs)");
-          }
-        } catch (err4) {
-          console.warn("Proxy 5 (codetabs) failed:", err4);
+          console.warn("Proxy 4 (codetabs) failed:", err3);
         }
       }
 

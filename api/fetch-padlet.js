@@ -14,11 +14,12 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Try multiple public proxy endpoints sequentially to bypass Padlet's IP block & proxy outages
+  // Try multiple public proxy endpoints sequentially
+  // Note: Codetabs and Corsproxy.io require UNENCODED target URLs to avoid 400/403 errors
   const proxyUrls = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-    `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`, // Fixed: added trailing slash before query
-    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
+    `https://api.codetabs.com/v1/proxy/?quest=${targetUrl}`,
+    `https://corsproxy.io/?${targetUrl}`
   ];
 
   let contents = null;
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
   for (const proxyUrl of proxyUrls) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout per attempt
       
       const response = await fetch(proxyUrl, {
         headers: {
