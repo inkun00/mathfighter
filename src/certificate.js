@@ -210,6 +210,9 @@ export function saveCertificate() {
   const certContainer = document.getElementById("certContainer");
   if (!certContainer) return;
 
+  // Open the external link in a new browser window/tab
+  window.open("https://samboard.vivasam.com/studentEntry/?brdId=brd-0QR3C3WJN6RYH", "_blank");
+
   html2canvas(certContainer, {
     scale: 2, // Retain high quality
     backgroundColor: "#fdfdfc",
