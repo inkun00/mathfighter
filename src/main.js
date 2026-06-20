@@ -36,7 +36,7 @@ import {
   resolveMonsterProjectileUpdates,
   resolveMonsterUpdates
 } from './monsterResolver.js';
-import { resolveBossUpdate } from './bossResolver.js';
+import { createBossGimmickProblem, resolveBossUpdate } from './bossResolver.js';
 
 // Game variables
 let canvas, ctx;
@@ -1332,56 +1332,7 @@ function update() {
 
   const now = Date.now();
 
-  // Determine active problem (accounts for boss gimmick)
-  let activeProblem = currentProblem;
-  if (boss && boss.isGimmickActive) {
-    let type = 'divisor';
-    let options = [36];
-    let targetNum = boss.gimmickTargetVal;
-    
-    if (boss.stage === 10) {
-      type = 'divisor';
-      options = [2, 3, 4, 6, 9, 12, 18];
-    } else if (boss.stage === 20) {
-      type = 'multiple';
-      options = [7, 14, 21, 28, 35, 42];
-    } else if (boss.stage === 40) {
-      type = 'lcm';
-      options = [12];
-    } else if (boss.stage === 50) {
-      type = boss.chaosCycleType;
-      if (type === 'divisor') {
-        options = [2, 3, 4, 6, 8, 12];
-      } else if (type === 'multiple') {
-        options = [9, 18, 27, 36, 45];
-      } else if (type === 'gcd') {
-        options = [8];
-      } else if (type === 'lcm') {
-        options = [15];
-      }
-    }
-    
-    activeProblem = {
-      id: `boss-${boss.stage}-${boss.lastGimmickTriggerTime}-${boss.chaosCycleType}`,
-      area: currentProblem.area,
-      type,
-      targetNum,
-      options,
-      requiredCount: boss.gimmickRequiredCount,
-      checkAnswer: (val) => {
-        if (boss.stage === 10) return (36 % val === 0);
-        if (boss.stage === 20) return (val % 7 === 0 && val > 0);
-        if (boss.stage === 40) return (val === 12);
-        if (boss.stage === 50) {
-          if (boss.chaosCycleType === 'divisor') return (24 % val === 0);
-          if (boss.chaosCycleType === 'multiple') return (val % 9 === 0 && val > 0);
-          if (boss.chaosCycleType === 'gcd') return (val === 8);
-          if (boss.chaosCycleType === 'lcm') return (val === 15);
-        }
-        return false;
-      }
-    };
-  }
+  const activeProblem = createBossGimmickProblem(boss, currentProblem);
 
   // 1. Check timer ticks (once per second)
   if (now - lastSecTime >= 1000) {

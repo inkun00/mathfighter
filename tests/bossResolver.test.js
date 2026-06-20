@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveBossUpdate } from '../src/bossResolver.js';
+import {
+  createBossGimmickProblem,
+  resolveBossUpdate
+} from '../src/bossResolver.js';
 
 function createPlayer(overrides = {}) {
   return {
@@ -100,4 +103,107 @@ test('reports a boss defeated during its update', () => {
 
   assert.equal(result.result.bossDefeated, true);
   assert.equal(result.result.playerDied, false);
+});
+
+test('keeps the current problem outside an active boss gimmick', () => {
+  const currentProblem = { id: 7, area: 2 };
+
+  assert.equal(createBossGimmickProblem(null, currentProblem), currentProblem);
+  assert.equal(
+    createBossGimmickProblem({ isGimmickActive: false }, currentProblem),
+    currentProblem
+  );
+});
+
+test('creates the stage 10 divisor problem', () => {
+  const boss = {
+    stage: 10,
+    isGimmickActive: true,
+    lastGimmickTriggerTime: 123,
+    chaosCycleType: 'divisor',
+    gimmickTargetVal: 36,
+    gimmickRequiredCount: 3
+  };
+  const problem = createBossGimmickProblem(boss, { area: 2 });
+
+  assert.equal(problem.id, 'boss-10-123-divisor');
+  assert.equal(problem.area, 2);
+  assert.equal(problem.type, 'divisor');
+  assert.equal(problem.targetNum, 36);
+  assert.equal(problem.requiredCount, 3);
+  assert.deepEqual(problem.options, [2, 3, 4, 6, 9, 12, 18]);
+  assert.equal(problem.checkAnswer(9), true);
+  assert.equal(problem.checkAnswer(5), false);
+});
+
+test('creates the stage 20 positive-multiple problem', () => {
+  const problem = createBossGimmickProblem({
+    stage: 20,
+    isGimmickActive: true,
+    lastGimmickTriggerTime: 1,
+    chaosCycleType: 'divisor',
+    gimmickTargetVal: 7,
+    gimmickRequiredCount: 1
+  }, { area: 1 });
+
+  assert.equal(problem.type, 'multiple');
+  assert.deepEqual(problem.options, [7, 14, 21, 28, 35, 42]);
+  assert.equal(problem.checkAnswer(14), true);
+  assert.equal(problem.checkAnswer(0), false);
+});
+
+test('preserves the stage 30 platform-only problem behavior', () => {
+  const problem = createBossGimmickProblem({
+    stage: 30,
+    isGimmickActive: true,
+    lastGimmickTriggerTime: 1,
+    chaosCycleType: 'divisor',
+    gimmickTargetVal: 6,
+    gimmickRequiredCount: 1
+  }, { area: 3 });
+
+  assert.equal(problem.type, 'divisor');
+  assert.deepEqual(problem.options, [36]);
+  assert.equal(problem.checkAnswer(6), false);
+});
+
+test('creates the stage 40 least-common-multiple problem', () => {
+  const problem = createBossGimmickProblem({
+    stage: 40,
+    isGimmickActive: true,
+    lastGimmickTriggerTime: 1,
+    chaosCycleType: 'divisor',
+    gimmickTargetVal: 12,
+    gimmickRequiredCount: 1
+  }, { area: 4 });
+
+  assert.equal(problem.type, 'lcm');
+  assert.deepEqual(problem.options, [12]);
+  assert.equal(problem.checkAnswer(12), true);
+  assert.equal(problem.checkAnswer(24), false);
+});
+
+test('creates every stage 50 chaos problem variant', () => {
+  const cases = [
+    ['divisor', [2, 3, 4, 6, 8, 12], 6, 5],
+    ['multiple', [9, 18, 27, 36, 45], 18, 8],
+    ['gcd', [8], 8, 4],
+    ['lcm', [15], 15, 10]
+  ];
+
+  cases.forEach(([type, options, correct, wrong]) => {
+    const problem = createBossGimmickProblem({
+      stage: 50,
+      isGimmickActive: true,
+      lastGimmickTriggerTime: 1,
+      chaosCycleType: type,
+      gimmickTargetVal: correct,
+      gimmickRequiredCount: 2
+    }, { area: 5 });
+
+    assert.equal(problem.type, type);
+    assert.deepEqual(problem.options, options);
+    assert.equal(problem.checkAnswer(correct), true);
+    assert.equal(problem.checkAnswer(wrong), false);
+  });
 });
