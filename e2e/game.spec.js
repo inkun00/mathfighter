@@ -13,6 +13,14 @@ test('starts a regular game and pauses and resumes', async ({ page }) => {
   await expect(page.locator('#stageNum')).toHaveText('1');
   await expect(page.locator('#problemText')).not.toHaveText('로딩 중...');
 
+  const initialX = await page.evaluate(key => JSON.parse(sessionStorage.getItem(key)).player.x, SESSION_KEY);
+  await page.keyboard.down('d');
+  await page.waitForTimeout(250);
+  await page.keyboard.up('d');
+  await expect.poll(async () => {
+    return page.evaluate(key => JSON.parse(sessionStorage.getItem(key)).player.x, SESSION_KEY);
+  }).toBeGreaterThan(initialX);
+
   await page.keyboard.press('Escape');
   await expect(page.locator('#pauseModal')).toBeVisible();
   await page.locator('#pauseResumeBtn').click();

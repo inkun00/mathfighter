@@ -11,6 +11,7 @@ import {
 import { openBrainTrainingModal, openExamModal } from './exam.js';
 import { showCertificate, saveCertificate } from './certificate.js';
 import { loadCustomQuizFromPadletUrl } from './customQuiz.js';
+import { createInputController } from './inputController.js';
 
 // Game variables
 let canvas, ctx;
@@ -32,8 +33,6 @@ let isDeathHandled = false;
 let usedReviewRevive = false;
 let brainTrainingCompletedStages = new Set();
 
-let keys = {};
-let mobileMoveKeys = new Set();
 let lastSpawnTime = 0;
 let lastSecTime = 0;
 let lastSessionSaveTime = 0;
@@ -64,6 +63,12 @@ let correctAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 let totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 let combo = 0;
 const SESSION_KEY = 'math_fighter_active_session';
+const inputController = createInputController({
+  getGameState: () => gameState,
+  onPause: () => showPauseMenu(),
+  onResume: () => resumeFromPause()
+});
+const { keys } = inputController;
 
 function createStageProblem(stage) {
   const problem = generateProblem(stage);
@@ -400,31 +405,6 @@ function blurActiveControl() {
   }
 }
 
-function clearMobileMoveKeys() {
-  mobileMoveKeys.forEach(key => {
-    keys[key] = false;
-  });
-  mobileMoveKeys.clear();
-  keys.__mobileMoveActive = false;
-}
-
-function setMobileMoveKeys(nextKeys) {
-  clearMobileMoveKeys();
-  nextKeys.forEach(key => {
-    keys[key] = true;
-    mobileMoveKeys.add(key);
-  });
-  keys.__mobileMoveActive = nextKeys.length > 0;
-}
-
-function resetMobileMoveControl() {
-  clearMobileMoveKeys();
-  const knob = document.getElementById('mobileStickKnob');
-  if (knob) {
-    knob.style.transform = 'translate(-50%, -50%)';
-  }
-}
-
 function resetCameraOffset() {
   cameraOffset = { x: 0, y: 0, initialized: false };
 }
@@ -519,8 +499,7 @@ function renderPauseLounge() {
 function showPauseMenu() {
   if (gameState !== 'play' && !isVisibleGameplayScreen()) return;
   gameState = 'pause';
-  keys = {};
-  resetMobileMoveControl();
+  inputController.reset();
   blurActiveControl();
   renderPauseLounge();
   document.getElementById('pauseModal').classList.remove('hidden');
@@ -536,7 +515,7 @@ function hidePauseMenu() {
 function resumeFromPause() {
   if (gameState !== 'pause') return;
   hidePauseMenu();
-  keys = {};
+  inputController.reset();
   
   if (player) {
     player.refreshStats();
@@ -581,8 +560,7 @@ function restartFromPause() {
   dropItems = [];
   hitEffects = [];
   boss = null;
-  keys = {};
-  resetMobileMoveControl();
+  inputController.reset();
   resetCameraOffset();
   gameState = 'start';
 }
@@ -606,8 +584,7 @@ function resetRunData() {
   dropItems = [];
   hitEffects = [];
   boss = null;
-  keys = {};
-  resetMobileMoveControl();
+  inputController.reset();
   resetCameraOffset();
 }
 
@@ -627,115 +604,7 @@ function setupEventListeners() {
   document.querySelectorAll('button').forEach(button => {
     button.type = 'button';
   });
-
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (gameState === 'play') {
-        showPauseMenu();
-      } else if (gameState === 'pause') {
-        resumeFromPause();
-      }
-      return;
-    }
-
-    const gameplayKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'];
-    if (gameState === 'play' && gameplayKeys.includes(e.key)) {
-      e.preventDefault();
-    }
-
-    if (gameState !== 'start' && (e.key === 'Enter' || e.key === ' ')) {
-      const active = document.activeElement;
-      if (active && active.tagName === 'BUTTON') {
-        active.blur();
-        e.preventDefault();
-        return;
-      }
-    }
-
-    keys[e.key] = true;
-  });
-  window.addEventListener('keyup', (e) => { keys[e.key] = false; });
-
-  const mobileMoveControl = document.getElementById('mobileMoveControl');
-  const mobileStickKnob = document.getElementById('mobileStickKnob');
-  let activeMovePointerId = null;
-
-  function updateMobileMove(pointerEvent) {
-    if (!mobileMoveControl || !mobileStickKnob) return;
-    const rect = mobileMoveControl.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const maxDistance = rect.width * 0.32;
-    const rawDx = pointerEvent.clientX - centerX;
-    const rawDy = pointerEvent.clientY - centerY;
-    const distance = Math.hypot(rawDx, rawDy);
-    const clampedDistance = Math.min(maxDistance, distance);
-    const angle = Math.atan2(rawDy, rawDx);
-    const knobX = distance > 0 ? Math.cos(angle) * clampedDistance : 0;
-    const knobY = distance > 0 ? Math.sin(angle) * clampedDistance : 0;
-    const deadZone = maxDistance * 0.24;
-    const nextKeys = [];
-
-    mobileStickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
-
-    if (distance >= deadZone && gameState === 'play') {
-      if (rawYFromAngle(angle) < -0.35) nextKeys.push('ArrowUp');
-      if (rawYFromAngle(angle) > 0.35) nextKeys.push('ArrowDown');
-      if (Math.cos(angle) < -0.35) nextKeys.push('ArrowLeft');
-      if (Math.cos(angle) > 0.35) nextKeys.push('ArrowRight');
-    }
-
-    setMobileMoveKeys(nextKeys);
-  }
-
-  function rawYFromAngle(angle) {
-    return Math.sin(angle);
-  }
-
-  if (mobileMoveControl && mobileStickKnob) {
-    mobileMoveControl.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      activeMovePointerId = e.pointerId;
-      mobileMoveControl.setPointerCapture?.(e.pointerId);
-      updateMobileMove(e);
-    });
-
-    mobileMoveControl.addEventListener('pointermove', (e) => {
-      if (activeMovePointerId !== e.pointerId) return;
-      e.preventDefault();
-      updateMobileMove(e);
-    });
-
-    const endMobileMove = (e) => {
-      if (activeMovePointerId !== e.pointerId) return;
-      activeMovePointerId = null;
-      resetMobileMoveControl();
-    };
-
-    mobileMoveControl.addEventListener('pointerup', endMobileMove);
-    mobileMoveControl.addEventListener('pointercancel', endMobileMove);
-    mobileMoveControl.addEventListener('lostpointercapture', () => {
-      activeMovePointerId = null;
-      resetMobileMoveControl();
-    });
-  }
-
-  const mobilePauseBtn = document.getElementById('mobilePauseBtn');
-  if (mobilePauseBtn) {
-    const activateMobilePause = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showPauseMenu();
-    };
-
-    document.addEventListener('pointerup', (e) => {
-      if (!e.target.closest?.('#mobilePauseBtn')) return;
-      activateMobilePause(e);
-    }, true);
-    mobilePauseBtn.addEventListener('pointerup', activateMobilePause);
-    mobilePauseBtn.addEventListener('click', activateMobilePause);
-  }
+  inputController.setup();
 
   // Gender Selection Card Click Listeners
   const maleCard = document.getElementById('genderMaleCard');
@@ -958,8 +827,7 @@ function loadStage(stageNum) {
   dropItems = [];
   hitEffects = [];
   boss = null;
-  keys = {};
-  resetMobileMoveControl();
+  inputController.reset();
   resetCameraOffset();
   isDeathHandled = false;
   hidePauseMenu();
