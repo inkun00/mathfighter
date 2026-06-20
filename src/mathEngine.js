@@ -4,11 +4,11 @@
  */
 
 export function setCustomQuizData(data) {
-  window.customQuizData = data;
+  globalThis.customQuizData = data;
 }
 
 export function getCustomQuizData() {
-  return window.customQuizData || null;
+  return globalThis.customQuizData || null;
 }
 
 export function isCustomMode() {

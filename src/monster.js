@@ -150,38 +150,6 @@ export class MonsterProjectile {
   }
 }
 
-// 50 types of monsters base definitions map by Theme
-const MONSTER_TEMPLATES = {
-  theme1: [
-    { name: "꼬마 약수 슬라임", pattern: "charge", speed: 1.2, maxHp: 30, atk: 10, color: "#a0ff60" },
-    { name: "숲속 던지기 다람쥐", pattern: "throw", speed: 1.5, maxHp: 20, atk: 8, color: "#d0a060" },
-    { name: "가시덤불 고슴도치", pattern: "charge", speed: 0.9, maxHp: 45, atk: 12, color: "#808080" },
-    { name: "붉은 이빨 박쥐", pattern: "charge", speed: 1.8, maxHp: 22, atk: 10, color: "#ff4060" },
-    { name: "가시 덩굴 전사", pattern: "charge", speed: 1.1, maxHp: 80, atk: 15, color: "#20b060", isElite: true }
-  ],
-  theme2: [
-    { name: "배수 모래 게", pattern: "charge", speed: 1.3, maxHp: 60, atk: 15, color: "#ffb060" },
-    { name: "사막 던지기 전갈", pattern: "throw", speed: 1.4, maxHp: 40, atk: 12, color: "#e2b02a" },
-    { name: "자폭형 모래 풍선", pattern: "bomb", speed: 1.6, maxHp: 30, atk: 25, color: "#ff6020" },
-    { name: "분열 오아시스 젤리", pattern: "split", speed: 1.0, maxHp: 55, atk: 12, color: "#00a0ff" },
-    { name: "미라 전사", pattern: "debuff", speed: 1.1, maxHp: 120, atk: 18, color: "#ffcc00", isElite: true }
-  ],
-  theme3: [
-    { name: "진흙 늪지 거북이", pattern: "charge", speed: 0.7, maxHp: 150, atk: 20, color: "#2e7d32" },
-    { name: "독가스 버섯 슬라임", pattern: "bomb", speed: 1.0, maxHp: 80, atk: 22, color: "#9c27b0" },
-    { name: "습지 비행 반딧불이", pattern: "throw", speed: 1.7, maxHp: 60, atk: 16, color: "#ffeb3b" },
-    { name: "늪지 독사", pattern: "charge", speed: 2.2, maxHp: 70, atk: 18, color: "#4caf50" },
-    { name: "거대 악어 광전사", pattern: "charge", speed: 1.2, maxHp: 240, atk: 30, color: "#ff5722", isElite: true }
-  ],
-  theme4: [
-    { name: "거품 소라", pattern: "throw", speed: 0.8, maxHp: 120, atk: 24, color: "#00bcd4" },
-    { name: "집게 랍스터", pattern: "charge", speed: 1.4, maxHp: 140, atk: 28, color: "#e91e63" },
-    { name: "해파리 발광체", pattern: "debuff", speed: 1.5, maxHp: 100, atk: 20, color: "#90caf9" },
-    { name: "파도타기 상어", pattern: "charge", speed: 2.4, maxHp: 110, atk: 26, color: "#0d47a1" },
-    { name: "심해 거대 문어", pattern: "throw", speed: 1.1, maxHp: 320, atk: 35, color: "#3f51b5", isElite: true }
-  ]
-};
-
 const MONSTER_ROSTER = [
   {
     id: 'acid_slime',
@@ -833,44 +801,6 @@ export function spawnMonster(canvasWidth, canvasHeight, playerX, playerY, stage)
   const weightedY = Math.max(20, Math.min(canvasHeight - 20, playerY + Math.sin(weightedAngle) * weightedDist));
 
   return new Monster(weightedX, weightedY, weightedTemplate, stage);
-
-  // Determine Theme
-  let theme = 'theme1';
-  if (stage > 40) theme = 'theme5';
-  else if (stage > 30) theme = 'theme4';
-  else if (stage > 20) theme = 'theme3';
-  else if (stage > 10) theme = 'theme2';
-
-  let template;
-  if (theme === 'theme5') {
-    // Theme 5 dynamically synthesizes templates for high stage challenge
-    const rand = Math.floor(Math.random() * 4);
-    const templates = [
-      { name: "가고일 기하 병사", pattern: "charge", speed: 1.8, maxHp: 180, atk: 25, color: "#78909c" },
-      { name: "수식 소환 로브", pattern: "throw", speed: 1.2, maxHp: 140, atk: 30, color: "#673ab7" },
-      { name: "메카 기하 골렘", pattern: "debuff", speed: 1.0, maxHp: 350, atk: 40, color: "#009688", isElite: true },
-      { name: "자폭 무한 구체", pattern: "bomb", speed: 2.2, maxHp: 80, atk: 50, color: "#ff5722" }
-    ];
-    template = templates[rand];
-  } else {
-    const templates = MONSTER_TEMPLATES[theme];
-    const rand = Math.floor(Math.random() * templates.length);
-    template = templates[rand];
-  }
-
-  // Spawn outside viewport
-  let x, y;
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 550; // Viewport radius buffer
-
-  x = playerX + Math.cos(angle) * dist;
-  y = playerY + Math.sin(angle) * dist;
-
-  // Confine within rough bounds of stage (clamped to map size)
-  x = Math.max(20, Math.min(canvasWidth - 20, x));
-  y = Math.max(20, Math.min(canvasHeight - 20, y));
-
-  return new Monster(x, y, template, stage);
 }
 
 export function restoreMonster(snapshot, stage) {
