@@ -32,10 +32,39 @@ function createShopSession(currentStage) {
   };
 }
 
+function createPlaySession(currentStage, overrides = {}) {
+  const base = createShopSession(currentStage);
+  return {
+    ...base,
+    gameState: 'play',
+    ...overrides,
+    currentStage,
+    player: {
+      ...base.player,
+      ...overrides.player
+    }
+  };
+}
+
+async function seedSession(page, session) {
+  await page.addInitScript(({ key, value }) => {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  }, { key: SESSION_KEY, value: session });
+}
+
 async function seedShopSession(page, currentStage) {
-  await page.addInitScript(({ key, session }) => {
-    sessionStorage.setItem(key, JSON.stringify(session));
-  }, { key: SESSION_KEY, session: createShopSession(currentStage) });
+  await seedSession(page, createShopSession(currentStage));
+}
+
+async function installAdjustableClock(page) {
+  await page.addInitScript(() => {
+    const realNow = Date.now.bind(Date);
+    let offset = 0;
+    Date.now = () => realNow() + offset;
+    window.__advanceMathFighterTime = milliseconds => {
+      offset += milliseconds;
+    };
+  });
 }
 
 test('starts a regular game and pauses and resumes', async ({ page }) => {
@@ -80,6 +109,21 @@ test('restores an active session into the shop', async ({ page }) => {
   await expect(page.locator('#stageNum')).toHaveText('3');
 });
 
+test('clears a real regular stage countdown into the shop', async ({ page }) => {
+  await seedSession(page, createPlaySession(1, {
+    stageTimer: 1,
+    player: { name: 'Stage Clear E2E' }
+  }));
+
+  await page.goto('/');
+  await expect(page.locator('#gameContainer')).toBeVisible();
+  await expect(page.locator('#stageNum')).toHaveText('1');
+
+  await expect(page.locator('#shopScreen')).toBeVisible({ timeout: 8000 });
+  await expect(page.locator('#shopPlayerName')).toHaveText('Stage Clear E2E');
+  await expect(page.locator('#shopGoldText')).toHaveText('200');
+});
+
 test('advances from stage 9 into a boss stage', async ({ page }) => {
   await seedShopSession(page, 9);
 
@@ -89,6 +133,41 @@ test('advances from stage 9 into a boss stage', async ({ page }) => {
   await expect(page.locator('#gameContainer')).toBeVisible();
   await expect(page.locator('#stageNum')).toHaveText('10');
   await expect(page.locator('#problemTimer')).toHaveText('BOSS');
+});
+
+test('activates and fails a real stage 10 boss gimmick', async ({ page }) => {
+  await installAdjustableClock(page);
+  await seedSession(page, createPlaySession(10, {
+    combo: 7,
+    player: { name: 'Boss Gimmick E2E', hp: 100 },
+    boss: {
+      x: 640,
+      y: 100,
+      hp: 100000,
+      isGimmickActive: false,
+      lastGimmickTriggerTime: Date.now() - 41000
+    }
+  }));
+
+  await page.goto('/');
+  await expect(page.locator('#gameContainer')).toBeVisible();
+  await expect(page.locator('#stageNum')).toHaveText('10');
+
+  await expect.poll(async () => page.evaluate(key => {
+    const session = JSON.parse(sessionStorage.getItem(key));
+    return Boolean(session?.boss?.isGimmickActive);
+  }, SESSION_KEY)).toBe(true);
+
+  await page.evaluate(() => window.__advanceMathFighterTime(41000));
+
+  await expect.poll(async () => page.evaluate(key => {
+    const session = JSON.parse(sessionStorage.getItem(key));
+    return session?.combo;
+  }, SESSION_KEY)).toBe(0);
+
+  const failedState = await page.evaluate(key => JSON.parse(sessionStorage.getItem(key)), SESSION_KEY);
+  expect(failedState.player.hp).toBeLessThanOrEqual(60);
+  expect(failedState.boss.isGimmickActive).toBe(false);
 });
 
 test('completes the run after stage 50', async ({ page }) => {
