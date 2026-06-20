@@ -29,7 +29,10 @@ import {
   getStageTimers,
   isBossStage
 } from './stageRules.js';
-import { resolveProjectileCollisions } from './combatResolver.js';
+import {
+  resolvePlayerProjectileUpdates,
+  resolveProjectileCollisions
+} from './combatResolver.js';
 import { resolveDropItemPickups } from './pickupResolver.js';
 import {
   resolveMonsterProjectileUpdates,
@@ -1399,9 +1402,8 @@ function update() {
     }
   }
 
-  // 6. Update Projectiles
-  projectiles.forEach(p => p.update(monsters, { x: player.x, y: player.y }));
-  projectiles = projectiles.filter(p => !p.isDead);
+  // 6. Update player projectiles and remove expired entries.
+  projectiles = resolvePlayerProjectileUpdates({ projectiles, monsters, player });
 
   // 7. Update monster projectiles and resolve player collisions.
   monsterProjectiles = resolveMonsterProjectileUpdates({
@@ -1697,8 +1699,7 @@ function updateStageClear() {
   stageClearTimer--;
 
   // Update projectiles, items, hit effects
-  projectiles.forEach(p => p.update(monsters, { x: player.x, y: player.y }));
-  projectiles = projectiles.filter(p => !p.isDead);
+  projectiles = resolvePlayerProjectileUpdates({ projectiles, monsters, player });
 
   monsterProjectiles = resolveMonsterProjectileUpdates({
     projectiles: monsterProjectiles,

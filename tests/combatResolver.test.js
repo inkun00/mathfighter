@@ -4,6 +4,7 @@ import {
   circlesOverlap,
   distanceBetween,
   getDistanceToSegment,
+  resolvePlayerProjectileUpdates,
   resolveProjectileCollisions
 } from '../src/combatResolver.js';
 
@@ -142,4 +143,49 @@ test('fire patches tick against monsters and an unshielded boss', () => {
 
   assert.equal(monster.damageTaken[0], 32);
   assert.equal(boss.damageTaken[0], 24);
+});
+
+test('updates player projectiles with monsters and the player position', () => {
+  const monsters = [{ hp: 10 }];
+  const calls = [];
+  const projectile = createProjectile({
+    update(...args) {
+      calls.push(args);
+    }
+  });
+
+  const remaining = resolvePlayerProjectileUpdates({
+    projectiles: [projectile],
+    monsters,
+    player: { x: 12, y: 34 }
+  });
+
+  assert.equal(calls[0][0], monsters);
+  assert.deepEqual(calls[0][1], { x: 12, y: 34 });
+  assert.deepEqual(remaining, [projectile]);
+});
+
+test('updates projectiles before removing dead entries', () => {
+  const calls = [];
+  const alreadyDead = createProjectile({
+    isDead: true,
+    update() {
+      calls.push('already-dead');
+    }
+  });
+  const expiresDuringUpdate = createProjectile({
+    update() {
+      calls.push('expires');
+      this.isDead = true;
+    }
+  });
+
+  const remaining = resolvePlayerProjectileUpdates({
+    projectiles: [alreadyDead, expiresDuringUpdate],
+    monsters: [],
+    player: { x: 0, y: 0 }
+  });
+
+  assert.deepEqual(calls, ['already-dead', 'expires']);
+  assert.deepEqual(remaining, []);
 });

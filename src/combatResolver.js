@@ -21,6 +21,13 @@ export function getDistanceToSegment(px, py, ax, ay, bx, by) {
   return Math.hypot(px - closestX, py - closestY);
 }
 
+export function resolvePlayerProjectileUpdates({ projectiles, monsters, player }) {
+  projectiles.forEach(projectile => {
+    projectile.update(monsters, { x: player.x, y: player.y });
+  });
+  return projectiles.filter(projectile => !projectile.isDead);
+}
+
 export function applyProjectileImpact(target, projectile, damageScale = 1) {
   if (!target || target.hp <= 0) return;
   target.takeDamage(projectile.dmg * damageScale);
