@@ -21,6 +21,10 @@ test('starts a regular game and pauses and resumes', async ({ page }) => {
     return page.evaluate(key => JSON.parse(sessionStorage.getItem(key)).player.x, SESSION_KEY);
   }).toBeGreaterThan(initialX);
 
+  await page.reload();
+  await expect(page.locator('#gameContainer')).toBeVisible();
+  await expect(page.locator('#stageNum')).toHaveText('1');
+
   await page.keyboard.press('Escape');
   await expect(page.locator('#pauseModal')).toBeVisible();
   await page.locator('#pauseResumeBtn').click();
@@ -63,6 +67,19 @@ test('restores an active session into the shop', async ({ page }) => {
   await expect(page.locator('#shopScreen')).toBeVisible();
   await expect(page.locator('#shopPlayerName')).toHaveText('E2E Shopper');
   await expect(page.locator('#nextStageBtn')).toBeVisible();
+});
+
+test('discards a corrupted session and keeps the start screen usable', async ({ page }) => {
+  await page.addInitScript(({ key }) => {
+    sessionStorage.setItem(key, '{not-json');
+  }, { key: SESSION_KEY });
+
+  await page.goto('/');
+
+  await expect(page.locator('#startScreen')).toBeVisible();
+  await expect(page.locator('#startGameBtn')).toBeEnabled();
+  const hasSession = await page.evaluate(key => sessionStorage.getItem(key) !== null, SESSION_KEY);
+  expect(hasSession).toBe(false);
 });
 
 test('loads a custom Padlet quiz and starts the game', async ({ page }) => {

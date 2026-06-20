@@ -12,6 +12,12 @@ import { openBrainTrainingModal, openExamModal } from './exam.js';
 import { showCertificate, saveCertificate } from './certificate.js';
 import { loadCustomQuizFromPadletUrl } from './customQuiz.js';
 import { createInputController } from './inputController.js';
+import {
+  clearActiveSession,
+  createSessionSnapshot,
+  loadActiveSession,
+  saveActiveSession
+} from './sessionManager.js';
 
 // Game variables
 let canvas, ctx;
@@ -62,7 +68,6 @@ const STAGE_BACKGROUNDS = [
 let correctAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 let totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 let combo = 0;
-const SESSION_KEY = 'math_fighter_active_session';
 const inputController = createInputController({
   getGameState: () => gameState,
   onPause: () => showPauseMenu(),
@@ -195,14 +200,12 @@ if (document.readyState === 'loading') {
 
 function saveSessionSnapshot() {
   if (!player || gameState === 'start' || gameState === 'cert') {
-    sessionStorage.removeItem(SESSION_KEY);
+    clearActiveSession();
     return;
   }
 
-  const savedState = gameState === 'stageClear' ? 'shop' : gameState;
-
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-    gameState: savedState,
+  const snapshot = createSessionSnapshot({
+    gameState,
     currentStage,
     stageTimer,
     problemTimer,
@@ -213,64 +216,20 @@ function saveSessionSnapshot() {
     totalAnswers,
     combo,
     customQuizData: getCustomQuizData(),
-    currentProblem: currentProblem ? {
-      area: currentProblem.area,
-      text: currentProblem.text,
-      targetNum: currentProblem.targetNum,
-      type: currentProblem.type,
-      options: currentProblem.options,
-      wrongAnswers: currentProblem.wrongAnswers,
-      requiredCount: currentProblem.requiredCount
-    } : null,
+    currentProblem,
     problemProgress,
-    monsters: monsters
-      .filter(monster => monster.hp > 0)
-      .slice(0, 300)
-      .map(monster => ({
-        templateId: monster.templateId,
-        name: monster.name,
-        x: Math.round(monster.x),
-        y: Math.round(monster.y),
-        hp: Math.floor(monster.hp),
-        direction: monster.direction,
-        facing: monster.facing,
-        goldRewarded: Boolean(monster.goldRewarded)
-      })),
-    boss: boss && boss.hp > 0 ? {
-      x: Math.round(boss.x),
-      y: Math.round(boss.y),
-      hp: Math.floor(boss.hp),
-      isGimmickActive: Boolean(boss.isGimmickActive),
-      lastGimmickTriggerTime: boss.lastGimmickTriggerTime
-    } : null,
-    player: {
-      name: player.name,
-      gender: player.gender,
-      level: player.level,
-      exp: player.exp,
-      nextLevelExp: player.nextLevelExp,
-      hp: Math.floor(player.hp),
-      baseSpeed: player.baseSpeed,
-      atkMultiplier: player.atkMultiplier,
-      fireRateMultiplier: player.fireRateMultiplier,
-      expMultiplier: player.expMultiplier,
-      bonusMaxHp: player.bonusMaxHp,
-      bonusDefense: player.bonusDefense,
-      bonusMagnet: player.bonusMagnet,
-      x: Math.round(player.x),
-      y: Math.round(player.y)
-    }
-  }));
+    monsters,
+    boss,
+    player
+  });
+  saveActiveSession(snapshot);
 }
 
 function restoreSessionIfNeeded() {
-  const raw = sessionStorage.getItem(SESSION_KEY);
-  if (!raw) return;
+  const saved = loadActiveSession();
+  if (!saved) return;
 
   try {
-    const saved = JSON.parse(raw);
-    if (!saved || !saved.player || saved.gameState === 'start') return;
-
     selectedGender = saved.selectedGender || saved.player.gender || 'male';
     currentStage = saved.currentStage || 1;
     stageTimer = Number.isFinite(saved.stageTimer) ? saved.stageTimer : 90;
@@ -356,7 +315,7 @@ function restoreSessionIfNeeded() {
     }
   } catch (error) {
     console.warn('Failed to restore Math Fighter session', error);
-    sessionStorage.removeItem(SESSION_KEY);
+    clearActiveSession();
   }
 }
 
@@ -545,7 +504,7 @@ function resumeFromPause() {
 function restartFromPause() {
   if (gameState !== 'pause') return;
   blurActiveControl();
-  sessionStorage.removeItem(SESSION_KEY);
+  clearActiveSession();
   hidePauseMenu();
   document.getElementById('gameContainer').classList.add('hidden');
   document.getElementById('shopScreen').classList.add('hidden');
@@ -566,7 +525,7 @@ function restartFromPause() {
 }
 
 function resetRunData() {
-  sessionStorage.removeItem(SESSION_KEY);
+  clearActiveSession();
   resetState();
   correctAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
@@ -1312,7 +1271,7 @@ function openShopScreen() {
 // Renders the cert report screen
 function openCertificateScreen() {
   gameState = 'cert';
-  sessionStorage.removeItem(SESSION_KEY);
+  clearActiveSession();
   blurActiveControl();
   hidePauseMenu();
   hideStartScreen();
