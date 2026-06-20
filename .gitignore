@@ -25,6 +25,8 @@ web_modules/
 dist/
 tmp/
 out/
+test-results/
+playwright-report/
 
 # Vercel
 .vercel
