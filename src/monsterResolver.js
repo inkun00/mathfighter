@@ -1,4 +1,23 @@
-import { distanceBetween } from './combatResolver.js';
+import { circlesOverlap, distanceBetween } from './combatResolver.js';
+
+export function resolveMonsterProjectileUpdates({
+  projectiles,
+  worldWidth,
+  worldHeight,
+  player = null,
+  onPlayerDeath = () => {}
+}) {
+  projectiles.forEach(projectile => {
+    projectile.update(worldWidth, worldHeight);
+    if (!player || !circlesOverlap(player, projectile)) return;
+
+    player.takeDamage(projectile.dmg);
+    projectile.isDead = true;
+    if (player.hp <= 0) onPlayerDeath();
+  });
+
+  return projectiles.filter(projectile => !projectile.isDead);
+}
 
 export function resolveMonsterUpdates({
   monsters,

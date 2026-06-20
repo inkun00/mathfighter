@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveMonsterUpdates } from '../src/monsterResolver.js';
+import {
+  resolveMonsterProjectileUpdates,
+  resolveMonsterUpdates
+} from '../src/monsterResolver.js';
 
 function createPlayer(overrides = {}) {
   return {
@@ -25,6 +28,21 @@ function createMonster(overrides = {}) {
     hp: 100,
     atk: 20,
     lastContactDamageTime: 0,
+    updateCalls: [],
+    update(...args) {
+      this.updateCalls.push(args);
+    },
+    ...overrides
+  };
+}
+
+function createProjectile(overrides = {}) {
+  return {
+    x: 100,
+    y: 0,
+    radius: 5,
+    dmg: 12,
+    isDead: false,
     updateCalls: [],
     update(...args) {
       this.updateCalls.push(args);
@@ -117,4 +135,58 @@ test('reports lethal explosion and contact damage', () => {
 
   assert.deepEqual(player.damageTaken, [30, 3.2]);
   assert.deepEqual(result.deaths, [-20, -23.2]);
+});
+
+test('updates monster projectiles and removes dead entries', () => {
+  const living = createProjectile();
+  const expired = createProjectile({
+    update(width, height) {
+      this.updateCalls.push([width, height]);
+      this.isDead = true;
+    }
+  });
+
+  const remaining = resolveMonsterProjectileUpdates({
+    projectiles: [living, expired],
+    worldWidth: 800,
+    worldHeight: 600
+  });
+
+  assert.deepEqual(living.updateCalls, [[800, 600]]);
+  assert.deepEqual(expired.updateCalls, [[800, 600]]);
+  assert.deepEqual(remaining, [living]);
+});
+
+test('damages the player and removes colliding monster projectiles', () => {
+  const colliding = createProjectile({ x: 14 });
+  const touching = createProjectile({ x: 15 });
+  const player = createPlayer();
+
+  const remaining = resolveMonsterProjectileUpdates({
+    projectiles: [colliding, touching],
+    worldWidth: 800,
+    worldHeight: 600,
+    player
+  });
+
+  assert.deepEqual(player.damageTaken, [12]);
+  assert.equal(colliding.isDead, true);
+  assert.equal(touching.isDead, false);
+  assert.deepEqual(remaining, [touching]);
+});
+
+test('reports lethal monster projectile damage', () => {
+  const projectile = createProjectile({ x: 0 });
+  const player = createPlayer({ hp: 10 });
+  const deaths = [];
+
+  resolveMonsterProjectileUpdates({
+    projectiles: [projectile],
+    worldWidth: 800,
+    worldHeight: 600,
+    player,
+    onPlayerDeath: () => deaths.push(player.hp)
+  });
+
+  assert.deepEqual(deaths, [-2]);
 });

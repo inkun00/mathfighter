@@ -30,12 +30,12 @@ import {
   getStageTimers,
   isBossStage
 } from './stageRules.js';
-import {
-  circlesOverlap,
-  resolveProjectileCollisions
-} from './combatResolver.js';
+import { resolveProjectileCollisions } from './combatResolver.js';
 import { resolveDropItemPickups } from './pickupResolver.js';
-import { resolveMonsterUpdates } from './monsterResolver.js';
+import {
+  resolveMonsterProjectileUpdates,
+  resolveMonsterUpdates
+} from './monsterResolver.js';
 
 // Game variables
 let canvas, ctx;
@@ -1443,19 +1443,14 @@ function update() {
   projectiles.forEach(p => p.update(monsters, { x: player.x, y: player.y }));
   projectiles = projectiles.filter(p => !p.isDead);
 
-  // 7. Update Monster Projectiles
-  monsterProjectiles.forEach(mp => {
-    mp.update(worldWidth, worldHeight);
-    // Player collision
-    if (circlesOverlap(player, mp)) {
-      player.takeDamage(mp.dmg);
-      mp.isDead = true;
-      if (player.hp <= 0) {
-        handlePlayerDeath();
-      }
-    }
+  // 7. Update monster projectiles and resolve player collisions.
+  monsterProjectiles = resolveMonsterProjectileUpdates({
+    projectiles: monsterProjectiles,
+    worldWidth,
+    worldHeight,
+    player,
+    onPlayerDeath: handlePlayerDeath
   });
-  monsterProjectiles = monsterProjectiles.filter(mp => !mp.isDead);
 
   // 8. Update monsters and resolve contact damage.
   resolveMonsterUpdates({
@@ -1745,8 +1740,11 @@ function updateStageClear() {
   projectiles.forEach(p => p.update(monsters, { x: player.x, y: player.y }));
   projectiles = projectiles.filter(p => !p.isDead);
 
-  monsterProjectiles.forEach(mp => mp.update(worldWidth, worldHeight));
-  monsterProjectiles = monsterProjectiles.filter(mp => !mp.isDead);
+  monsterProjectiles = resolveMonsterProjectileUpdates({
+    projectiles: monsterProjectiles,
+    worldWidth,
+    worldHeight
+  });
 
   dropItems.forEach(item => item.update({ x: player.x, y: player.y }, player.magnetRange));
   dropItems = dropItems.filter(item => !item.isDead);
