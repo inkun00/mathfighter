@@ -36,6 +36,7 @@ import {
   resolveMonsterProjectileUpdates,
   resolveMonsterUpdates
 } from './monsterResolver.js';
+import { resolveBossUpdate } from './bossResolver.js';
 
 // Game variables
 let canvas, ctx;
@@ -1419,21 +1420,19 @@ function update() {
 
   // 5. Update Boss (if active)
   if (boss) {
-    const bossEvent = boss.update({ x: player.x, y: player.y }, monsterProjectiles, dropItems);
-    
-    if (bossEvent === 'failed_penalty') {
-      // Boss gimmick failed! Player takes massive penalty
-      player.takeDamage(40);
-      combo = 0;
-      recordWrongArea(activeProblem.area);
-      
-      if (player.hp <= 0) {
-        handlePlayerDeath();
-        return;
-      }
-    }
+    const bossResult = resolveBossUpdate({
+      boss,
+      player,
+      monsterProjectiles,
+      dropItems,
+      onPenalty: () => recordWrongArea(activeProblem.area),
+      onPlayerDeath: handlePlayerDeath
+    });
 
-    if (boss.hp <= 0) {
+    if (bossResult.comboReset) combo = 0;
+    if (bossResult.playerDied) return;
+
+    if (bossResult.bossDefeated) {
       triggerStageClear(true);
       return;
     }
