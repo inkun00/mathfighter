@@ -27,7 +27,6 @@ import {
   getStageClearLabel,
   getStageClearReward,
   getStageEnemyPressure,
-  getStageRewardMultiplier,
   getStageTimers,
   isBossStage
 } from './stageRules.js';
@@ -36,6 +35,7 @@ import {
   distanceBetween,
   resolveProjectileCollisions
 } from './combatResolver.js';
+import { resolveDropItemPickups } from './pickupResolver.js';
 
 // Game variables
 let canvas, ctx;
@@ -1487,86 +1487,55 @@ function update() {
     }
   });
 
-  // 9. Update Drop Items
-  dropItems.forEach(item => {
-    item.update({ x: player.x, y: player.y }, player.magnetRange);
-    
-    // Check pickup collision
-    if (circlesOverlap(player, item)) {
-      item.isDead = true;
-      
-      // Apply Item Pickup Logic
-      if (item.type === 'gem') {
-        const leveled = player.gainExp(item.value);
-        if (leveled) triggerLevelUpEnhanced();
-      } else if (item.type === 'heart') {
-        player.heal(item.value);
-      } else if (item.type === 'bomb') {
-        // Explode all standard monsters on screen
-        monsters.forEach(m => {
-          if (m.hp > 0 && !m.isElite) {
-            m.hp = 0;
-            handleMonsterDefeat(m, activeProblem, false);
-          }
-        });
-      } else if (item.type === 'number') {
-        if (item.problemId !== activeProblem.id) {
-          return;
-        }
+  // 9. Update and resolve drop item pickups.
+  resolveDropItemPickups({
+    dropItems,
+    player,
+    activeProblem,
+    monsters,
+    combo,
+    stage: currentStage,
+    onLevelUp: triggerLevelUpEnhanced,
+    onMonsterDefeat: monster => handleMonsterDefeat(monster, activeProblem, false),
+    onNumberAnswer: (item, result) => {
+      totalAnswers[activeProblem.area]++;
 
-        // Math verification
-        totalAnswers[activeProblem.area]++;
-        
-        if (activeProblem.checkAnswer(item.value)) {
-          // Correct answer
-          combo++;
-          
-          correctAnswers[activeProblem.area]++;
-          const numberReward = Math.floor((30 + combo * 5) * 1.2 * getStageRewardMultiplier(currentStage));
-          addGold(numberReward);
-          player.gold = getGold();
+      if (result.correct) {
+        combo = result.combo;
+        correctAnswers[activeProblem.area]++;
+        addGold(result.goldReward);
+        player.gold = getGold();
+        spawnTextParticle(item.x, item.y, "정답! +🪙", "#39ff14");
 
-          // Spawn text popup (particle)
-          spawnTextParticle(item.x, item.y, "정답! +🪙", "#39ff14");
-
-          if (boss && boss.isGimmickActive) {
-            if (boss.stage !== 30) {
-              boss.gimmickAnswerCount++;
-              if (boss.gimmickAnswerCount >= boss.gimmickRequiredCount) {
-                boss.isGimmickActive = false; // Break shield / complete gimmick
-                boss.lastGimmickTriggerTime = Date.now();
-                boss.speed = boss.baseSpeed;
-                spawnTextParticle(boss.x, boss.y, "기믹 해결!", "#39ff14");
-              }
-            }
-          } else {
-            problemProgress++;
-            if (problemProgress >= currentProblem.requiredCount) {
-              // Problem solved! Move to the next reward question.
-              combo += 5;
-              removeStaleNumberDrops();
-              currentProblem = createStageProblem(currentStage);
-              problemProgress = 0;
-              problemTimer = PROBLEM_DURATION;
+        if (boss && boss.isGimmickActive) {
+          if (boss.stage !== 30) {
+            boss.gimmickAnswerCount++;
+            if (boss.gimmickAnswerCount >= boss.gimmickRequiredCount) {
+              boss.isGimmickActive = false;
+              boss.lastGimmickTriggerTime = Date.now();
+              boss.speed = boss.baseSpeed;
+              spawnTextParticle(boss.x, boss.y, "기믹 해결!", "#39ff14");
             }
           }
         } else {
-          // penalty: deal 60% of monster contact damage (increased by 2x from 30%)
-          const baseAtk = monsters.length > 0 ? monsters[0].atk : 10;
-          const penaltyDmg = Math.max(1, Math.floor(baseAtk * 0.6));
-          player.takeDamage(penaltyDmg);
-          combo = 0;
-          
-          spawnTextParticle(item.x, item.y, `오답! HP -${penaltyDmg}`, "#ff007f");
-
-          // Save wrong math area index
-          recordWrongArea(activeProblem.area);
-
-          if (player.hp <= 0) {
-            handlePlayerDeath();
+          problemProgress++;
+          if (problemProgress >= currentProblem.requiredCount) {
+            combo += 5;
+            removeStaleNumberDrops();
+            currentProblem = createStageProblem(currentStage);
+            problemProgress = 0;
+            problemTimer = PROBLEM_DURATION;
           }
         }
+        return combo;
       }
+
+      player.takeDamage(result.penaltyDamage);
+      combo = result.combo;
+      spawnTextParticle(item.x, item.y, `오답! HP -${result.penaltyDamage}`, "#ff007f");
+      recordWrongArea(activeProblem.area);
+      if (player.hp <= 0) handlePlayerDeath();
+      return combo;
     }
   });
 
