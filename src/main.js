@@ -32,10 +32,10 @@ import {
 } from './stageRules.js';
 import {
   circlesOverlap,
-  distanceBetween,
   resolveProjectileCollisions
 } from './combatResolver.js';
 import { resolveDropItemPickups } from './pickupResolver.js';
+import { resolveMonsterUpdates } from './monsterResolver.js';
 
 // Game variables
 let canvas, ctx;
@@ -1457,34 +1457,13 @@ function update() {
   });
   monsterProjectiles = monsterProjectiles.filter(mp => !mp.isDead);
 
-  // 8. Update Monsters
-  monsters.forEach(m => {
-    if (m.hp <= 0) return;
-
-    const dist = distanceBetween(player, m);
-
-    const enemyEvent = m.update({ x: player.x, y: player.y }, monsters, monsterProjectiles);
-
-    if (enemyEvent === 'explode') {
-      // Bomber explode: Deal huge damage if close
-      if (dist < 80) {
-        player.takeDamage(m.atk * 1.5);
-        if (player.hp <= 0) {
-          handlePlayerDeath();
-        }
-      }
-    }
-
-    // Direct collision with player
-    if (dist < player.radius + m.radius) {
-      if (now - m.lastContactDamageTime >= 650) {
-        m.lastContactDamageTime = now;
-        player.takeDamage(Math.max(1, m.atk * 0.16));
-        if (player.hp <= 0) {
-          handlePlayerDeath();
-        }
-      }
-    }
+  // 8. Update monsters and resolve contact damage.
+  resolveMonsterUpdates({
+    monsters,
+    player,
+    monsterProjectiles,
+    now,
+    onPlayerDeath: handlePlayerDeath
   });
 
   // 9. Update and resolve drop item pickups.
