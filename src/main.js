@@ -18,6 +18,19 @@ import {
   loadActiveSession,
   saveActiveSession
 } from './sessionManager.js';
+import {
+  PROBLEM_DURATION,
+  REGULAR_STAGE_DURATION,
+  getFinalStage,
+  getNextStageProgress,
+  getStageClearFrames,
+  getStageClearLabel,
+  getStageClearReward,
+  getStageEnemyPressure,
+  getStageRewardMultiplier,
+  getStageTimers,
+  isBossStage
+} from './stageRules.js';
 
 // Game variables
 let canvas, ctx;
@@ -46,8 +59,8 @@ let cameraOffset = { x: 0, y: 0, initialized: false };
 
 let currentProblem = null;
 let problemProgress = 0;
-let stageTimer = 90; // Seconds left to survive regular stages
-let problemTimer = 30; // Seconds left for current math question
+let stageTimer = REGULAR_STAGE_DURATION; // Seconds left to survive regular stages
+let problemTimer = PROBLEM_DURATION; // Seconds left for current math question
 let problemSerial = 0;
 let stageClearTimer = 0;
 let bossDeathPos = null;
@@ -98,11 +111,6 @@ function handleMonsterDefeat(monster, activeProblem, showBonusText = true) {
   }
 
   monster.dropLoot(activeProblem, dropItems);
-}
-
-function getStageRewardMultiplier(stage) {
-  const stageGrowth = 1 + Math.max(0, stage - 1) * 0.03;
-  return stageGrowth * 1.1;
 }
 
 function applyProjectileImpact(target, projectile, damageScale = 1) {
@@ -232,8 +240,8 @@ function restoreSessionIfNeeded() {
   try {
     selectedGender = saved.selectedGender || saved.player.gender || 'male';
     currentStage = saved.currentStage || 1;
-    stageTimer = Number.isFinite(saved.stageTimer) ? saved.stageTimer : 90;
-    problemTimer = Number.isFinite(saved.problemTimer) ? saved.problemTimer : 30;
+    stageTimer = Number.isFinite(saved.stageTimer) ? saved.stageTimer : REGULAR_STAGE_DURATION;
+    problemTimer = Number.isFinite(saved.problemTimer) ? saved.problemTimer : PROBLEM_DURATION;
     usedReviewRevive = Boolean(saved.usedReviewRevive);
     brainTrainingCompletedStages = new Set(Array.isArray(saved.brainTrainingCompletedStages) ? saved.brainTrainingCompletedStages : []);
     correctAnswers = saved.correctAnswers || correctAnswers;
@@ -531,8 +539,8 @@ function resetRunData() {
   totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   combo = 0;
   currentStage = 1;
-  stageTimer = 90;
-  problemTimer = 30;
+  stageTimer = REGULAR_STAGE_DURATION;
+  problemTimer = PROBLEM_DURATION;
   problemSerial = 0;
   usedReviewRevive = false;
   brainTrainingCompletedStages = new Set();
@@ -545,17 +553,6 @@ function resetRunData() {
   boss = null;
   inputController.reset();
   resetCameraOffset();
-}
-
-function getStageEnemyPressure(stage) {
-  const clampedStage = Math.max(1, Math.min(50, stage));
-  const stageBand = Math.floor((clampedStage - 1) / 10);
-  const baseSpawnRate = Math.max(416, Math.floor((2300 - clampedStage * 24 - stageBand * 85) * 0.8));
-
-  return {
-    spawnRate: Math.max(360, Math.floor(baseSpawnRate * 0.9)),
-    spawnBatch: Math.min(4, 1 + Math.floor((clampedStage - 1) / 15))
-  };
 }
 
 // Bind all UI button clicks and key listeners
@@ -742,9 +739,10 @@ function setupEventListeners() {
   document.getElementById('nextStageBtn').addEventListener('click', () => {
     blurActiveControl();
     document.getElementById('shopScreen').classList.add('hidden');
-    currentStage++;
-    
-    if (currentStage > 50) {
+    const progress = getNextStageProgress(currentStage);
+    currentStage = progress.nextStage;
+
+    if (progress.completed) {
       // Game fully completed! Show Certificate
       openCertificateScreen();
     } else {
@@ -799,13 +797,14 @@ function loadStage(stageNum) {
   currentProblem = createStageProblem(stageNum);
   problemProgress = 0;
   combo = 0; // Reset combo count for the new stage
-  stageTimer = stageNum % 10 === 0 ? 0 : 90;
-  problemTimer = 30;
+  const timers = getStageTimers(stageNum);
+  stageTimer = timers.stageTimer;
+  problemTimer = timers.problemTimer;
   lastSpawnTime = Date.now() + 1200;
   lastSecTime = Date.now();
 
   // Spawns 10St, 20St, 30St, 40St, 50St Boss
-  if (stageNum % 10 === 0) {
+  if (isBossStage(stageNum)) {
     boss = new Boss(worldWidth / 2, worldHeight / 2 - 260, stageNum);
   }
 
@@ -1278,7 +1277,7 @@ function openCertificateScreen() {
   document.getElementById('gameContainer').classList.add('hidden');
   document.getElementById('shopScreen').classList.add('hidden');
   
-  const finalStage = currentStage > 50 ? 50 : currentStage;
+  const finalStage = getFinalStage(currentStage);
   showCertificate(player, correctAnswers, totalAnswers, finalStage);
 }
 
@@ -1409,7 +1408,7 @@ function update() {
     if (problemTimer <= 0) {
       removeStaleNumberDrops();
       currentProblem = createStageProblem(currentStage);
-      problemTimer = 30;
+      problemTimer = PROBLEM_DURATION;
       problemProgress = 0;
     }
 
@@ -1572,7 +1571,7 @@ function update() {
               removeStaleNumberDrops();
               currentProblem = createStageProblem(currentStage);
               problemProgress = 0;
-              problemTimer = 30;
+              problemTimer = PROBLEM_DURATION;
             }
           }
         } else {
@@ -1740,7 +1739,7 @@ function update() {
   monsters = monsters.filter(m => m.hp > 0 || Date.now() - m.spawnTime < 1000);
 
   // 12. Clear regular stages after surviving for 90 seconds.
-  if (!boss && currentStage % 10 !== 0 && stageTimer <= 0) {
+  if (!boss && !isBossStage(currentStage) && stageTimer <= 0) {
     triggerStageClear(false);
     return;
   }
@@ -1923,21 +1922,21 @@ function triggerStageClear(isBoss = false) {
   monsterProjectiles = [];
 
   if (isBoss && boss) {
-    const goldReward = 500 * (currentStage / 10);
+    const goldReward = getStageClearReward(currentStage, true);
     addGold(goldReward);
     player.gold = getGold();
     spawnTextParticle(boss.x, boss.y - 40, `BOSS DEFEATED! +${goldReward}G`, '#ffd700');
     
     bossDeathPos = { x: boss.x, y: boss.y };
-    stageClearTimer = 180; // 3 seconds (180 frames)
+    stageClearTimer = getStageClearFrames(true);
   } else {
-    const goldReward = 200;
+    const goldReward = getStageClearReward(currentStage, false);
     addGold(goldReward);
     player.gold = getGold();
     spawnTextParticle(player.x, player.y - 30, `STAGE SURVIVED! +${goldReward}G`, '#39ff14');
     
     bossDeathPos = null;
-    stageClearTimer = 120; // 2 seconds (120 frames)
+    stageClearTimer = getStageClearFrames(false);
   }
   
   gameState = 'stageClear';
@@ -2028,7 +2027,7 @@ function drawStageClearBanner() {
   ctx.shadowBlur = 0;
   ctx.fillStyle = '#ffd700';
   ctx.font = 'bold 16px "Press Start 2P", sans-serif';
-  const stageType = currentStage % 10 === 0 ? "BOSS DEFEATED!" : "SURVIVED!";
+  const stageType = getStageClearLabel(currentStage);
   ctx.fillText(`STAGE ${currentStage} - ${stageType}`, 0, 26);
 
   // Small loading hint
