@@ -2,7 +2,7 @@ import { Player } from './player.js';
 import { spawnMonster, restoreMonster } from './monster.js';
 import { Boss } from './boss.js';
 import { generateProblem, isCustomMode, setCustomQuizData, getCustomQuizData } from './mathEngine.js';
-import { 
+import {
   loadState, resetState, getGold, addGold, 
   getEquippedWeapons, WEAPONS_DB, UPGRADES_DB, 
   getUpgradeCost, getUpgradeLevel, purchaseUpgrade, purchaseWeapon, getOwnedWeapons, equipWeapon,
@@ -31,6 +31,11 @@ import {
   getStageTimers,
   isBossStage
 } from './stageRules.js';
+import {
+  circlesOverlap,
+  distanceBetween,
+  resolveProjectileCollisions
+} from './combatResolver.js';
 
 // Game variables
 let canvas, ctx;
@@ -111,26 +116,6 @@ function handleMonsterDefeat(monster, activeProblem, showBonusText = true) {
   }
 
   monster.dropLoot(activeProblem, dropItems);
-}
-
-function applyProjectileImpact(target, projectile, damageScale = 1) {
-  if (!target || target.hp <= 0) return;
-  target.takeDamage(projectile.dmg * damageScale);
-  if (typeof target.applyStatusEffect === 'function') {
-    target.applyStatusEffect(projectile.statusEffect);
-  }
-}
-
-function getDistanceToSegment(px, py, ax, ay, bx, by) {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
-  const abLenSq = abx * abx + aby * aby;
-  const t = abLenSq === 0 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
-  const closestX = ax + abx * t;
-  const closestY = ay + aby * t;
-  return Math.hypot(px - closestX, py - closestY);
 }
 
 function isMobileBrowserViewport() {
@@ -1462,10 +1447,7 @@ function update() {
   monsterProjectiles.forEach(mp => {
     mp.update(worldWidth, worldHeight);
     // Player collision
-    const dx = player.x - mp.x;
-    const dy = player.y - mp.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < player.radius + mp.radius) {
+    if (circlesOverlap(player, mp)) {
       player.takeDamage(mp.dmg);
       mp.isDead = true;
       if (player.hp <= 0) {
@@ -1479,9 +1461,7 @@ function update() {
   monsters.forEach(m => {
     if (m.hp <= 0) return;
 
-    const dx = player.x - m.x;
-    const dy = player.y - m.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = distanceBetween(player, m);
 
     const enemyEvent = m.update({ x: player.x, y: player.y }, monsters, monsterProjectiles);
 
@@ -1512,11 +1492,7 @@ function update() {
     item.update({ x: player.x, y: player.y }, player.magnetRange);
     
     // Check pickup collision
-    const dx = player.x - item.x;
-    const dy = player.y - item.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < player.radius + item.radius) {
+    if (circlesOverlap(player, item)) {
       item.isDead = true;
       
       // Apply Item Pickup Logic
@@ -1597,143 +1573,14 @@ function update() {
   // 10. Clean up dead entities
   dropItems = dropItems.filter(item => !item.isDead);
   
-  // 11. Bullet Collision with Monsters
-  projectiles.forEach(p => {
-    if (p.behavior === 'rail_laser') {
-      const endX = p.x + Math.cos(p.angle) * p.maxRange;
-      const endY = p.y + Math.sin(p.angle) * p.maxRange;
-
-      monsters.forEach(m => {
-        if (m.hp <= 0 || p.hitTargets?.has(m)) return;
-        const dist = getDistanceToSegment(m.x, m.y, p.x, p.y, endX, endY);
-        if (dist < m.radius + p.radius) {
-          p.hitTargets?.add(m);
-          applyProjectileImpact(m, p, 1.08);
-          spawnHitEffect(m.x, m.y, p, 0.85);
-          if (m.hp <= 0) handleMonsterDefeat(m, activeProblem);
-        }
-      });
-
-      if (boss && (!boss.isGimmickActive || boss.stage !== 10) && !p.hitTargets?.has(boss)) {
-        const dist = getDistanceToSegment(boss.x, boss.y, p.x, p.y, endX, endY);
-        if (dist < boss.radius + p.radius) {
-          p.hitTargets?.add(boss);
-          boss.takeDamage(p.dmg * 0.75);
-          spawnHitEffect(boss.x, boss.y, p, 1.25);
-        }
-      }
-      return;
-    }
-
-    if (p.behavior === 'fire_patch') {
-      const now = Date.now();
-      if (p.canApplyAreaTick(now)) {
-        monsters.forEach(m => {
-          if (m.hp <= 0) return;
-          const dx = m.x - p.x;
-          const dy = m.y - p.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < m.radius + p.splashRadius) {
-            applyProjectileImpact(m, p, p.id >= 22 ? 0.32 : 0.22);
-            spawnHitEffect(m.x, m.y, p, 0.45);
-            if (m.hp <= 0) handleMonsterDefeat(m, activeProblem);
-          }
-        });
-
-        if (boss && (!boss.isGimmickActive || boss.stage !== 10)) {
-          const dx = boss.x - p.x;
-          const dy = boss.y - p.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < boss.radius + p.splashRadius) {
-            boss.takeDamage(p.dmg * (p.id >= 22 ? 0.24 : 0.16));
-            spawnHitEffect(boss.x, boss.y, p, 0.65);
-          }
-        }
-      }
-      return;
-    }
-
-    monsters.forEach(m => {
-      if (m.hp <= 0 || p.isDead) return;
-      if (p.isParabolic && p.z > 0) return;
-      if (p.hitTargets?.has(m)) return;
-      const dx = m.x - p.x;
-      const dy = m.y - p.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < m.radius + p.radius) {
-        p.hitTargets?.add(m);
-        applyProjectileImpact(m, p);
-        spawnHitEffect(p.x, p.y, p);
-        p.hitCount++;
-
-        if (p.behavior === 'throw_fire') {
-          p.activateFirePatch();
-        }
-        
-        if (p.splashRadius > 0 && p.behavior !== 'fire_patch') {
-          // Deal area damage to nearby enemies for explosive and mine-type projectiles.
-          monsters.forEach(n => {
-            if (n === m || n.hp <= 0) return;
-            const ndx = n.x - p.x;
-            const ndy = n.y - p.y;
-            const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
-            if (ndist < p.splashRadius) {
-              applyProjectileImpact(n, p, p.id >= 21 ? 0.86 : 0.7);
-              spawnHitEffect(n.x, n.y, p, 0.65);
-              if (n.hp <= 0) handleMonsterDefeat(n, activeProblem);
-            }
-          });
-          if (!['throw_fire', 'shockwave', 'nova'].includes(p.behavior)) p.isDead = true;
-        }
-
-        if (m.hp <= 0) {
-          handleMonsterDefeat(m, activeProblem);
-        }
-
-        if (p.hitCount >= p.pierceLimit && !['throw_fire', 'fire_patch'].includes(p.behavior)) {
-          p.isDead = true;
-        }
-      }
-    });
-
-    // Check Boss collision
-    if (boss && !p.isDead && (!boss.isGimmickActive || boss.stage !== 10)) {
-      if (p.isParabolic && p.z > 0) return;
-      if (p.hitTargets?.has(boss)) return;
-      const dx = boss.x - p.x;
-      const dy = boss.y - p.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < boss.radius + p.radius) {
-        p.hitTargets?.add(boss);
-        boss.takeDamage(p.dmg);
-        spawnHitEffect(p.x, p.y, p, 1.2);
-        if (p.behavior === 'throw_fire') {
-          p.activateFirePatch();
-          return;
-        }
-        if (p.splashRadius > 0) {
-          monsters.forEach(n => {
-            if (n.hp <= 0) return;
-            const ndx = n.x - p.x;
-            const ndy = n.y - p.y;
-            const ndist = Math.sqrt(ndx * ndx + ndy * ndy);
-            if (ndist < p.splashRadius) {
-              applyProjectileImpact(n, p, p.id >= 21 ? 0.72 : 0.55);
-              spawnHitEffect(n.x, n.y, p, 0.65);
-              if (n.hp <= 0) handleMonsterDefeat(n, activeProblem);
-            }
-          });
-        }
-        if (!['pierce', 'boomerang', 'shockwave', 'nova'].includes(p.behavior)) {
-          p.isDead = true;
-        } else {
-          p.hitCount++;
-          if (p.hitCount >= p.pierceLimit) p.isDead = true;
-        }
-      }
-    }
+  // 11. Resolve player projectile collisions.
+  resolveProjectileCollisions({
+    projectiles,
+    monsters,
+    boss,
+    now,
+    onMonsterDefeat: monster => handleMonsterDefeat(monster, activeProblem),
+    onHitEffect: spawnHitEffect
   });
 
   monsters = monsters.filter(m => m.hp > 0 || Date.now() - m.spawnTime < 1000);
