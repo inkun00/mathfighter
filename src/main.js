@@ -26,7 +26,6 @@ import {
   getStageClearFrames,
   getStageClearLabel,
   getStageClearReward,
-  getStageEnemyPressure,
   getStageTimers,
   isBossStage
 } from './stageRules.js';
@@ -37,6 +36,7 @@ import {
   resolveMonsterUpdates
 } from './monsterResolver.js';
 import { createBossGimmickProblem, resolveBossUpdate } from './bossResolver.js';
+import { resolveGameTimerTick, resolveMonsterSpawns } from './gameFlow.js';
 
 // Game variables
 let canvas, ctx;
@@ -1334,18 +1334,22 @@ function update() {
 
   const activeProblem = createBossGimmickProblem(boss, currentProblem);
 
-  // 1. Check timer ticks (once per second)
-  if (now - lastSecTime >= 1000) {
-    lastSecTime = now;
-    if (!boss) {
-      stageTimer--;
-    }
-    problemTimer--;
+  // 1. Check timer ticks (once per second).
+  const timerResult = resolveGameTimerTick({
+    now,
+    lastSecTime,
+    stageTimer,
+    problemTimer,
+    hasBoss: Boolean(boss)
+  });
+  lastSecTime = timerResult.lastSecTime;
+  stageTimer = timerResult.stageTimer;
+  problemTimer = timerResult.problemTimer;
 
-    if (problemTimer <= 0) {
+  if (timerResult.ticked) {
+    if (timerResult.problemExpired) {
       removeStaleNumberDrops();
       currentProblem = createStageProblem(currentStage);
-      problemTimer = PROBLEM_DURATION;
       problemProgress = 0;
     }
 
@@ -1353,14 +1357,20 @@ function update() {
   }
 
   // 2. Spawn monsters. Later stages increase spawn pace and batch size.
-  const enemyPressure = getStageEnemyPressure(currentStage);
-  if (now - lastSpawnTime >= enemyPressure.spawnRate) {
-    const spawnCount = enemyPressure.spawnBatch;
-    for (let i = 0; i < spawnCount; i++) {
-      monsters.push(spawnMonster(worldWidth, worldHeight, player.x, player.y, currentStage));
-    }
-    lastSpawnTime = now;
-  }
+  const spawnResult = resolveMonsterSpawns({
+    now,
+    lastSpawnTime,
+    stage: currentStage,
+    monsters,
+    createMonster: () => spawnMonster(
+      worldWidth,
+      worldHeight,
+      player.x,
+      player.y,
+      currentStage
+    )
+  });
+  lastSpawnTime = spawnResult.lastSpawnTime;
 
   // 3. Update Player
   keys.__mobileBrowserActive = isMobileBrowserViewport();
