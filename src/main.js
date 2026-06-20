@@ -40,6 +40,7 @@ import {
 } from './monsterResolver.js';
 import { createBossGimmickProblem, resolveBossUpdate } from './bossResolver.js';
 import { resolveGameTimerTick, resolveMonsterSpawns } from './gameFlow.js';
+import { resolveStageClearFrame } from './stageClearResolver.js';
 
 // Game variables
 let canvas, ctx;
@@ -1696,36 +1697,25 @@ function triggerStageClear(isBoss = false) {
 }
 
 function updateStageClear() {
-  stageClearTimer--;
-
-  // Update projectiles, items, hit effects
-  projectiles = resolvePlayerProjectileUpdates({ projectiles, monsters, player });
-
-  monsterProjectiles = resolveMonsterProjectileUpdates({
-    projectiles: monsterProjectiles,
+  const result = resolveStageClearFrame({
+    stageClearTimer,
+    bossDeathPos,
+    projectiles,
+    monsterProjectiles,
+    dropItems,
+    monsters,
+    player,
     worldWidth,
-    worldHeight
+    worldHeight,
+    onHitEffect: spawnHitEffect,
+    onTextParticle: spawnTextParticle
   });
+  stageClearTimer = result.stageClearTimer;
+  projectiles = result.projectiles;
+  monsterProjectiles = result.monsterProjectiles;
+  dropItems = result.dropItems;
 
-  dropItems.forEach(item => item.update({ x: player.x, y: player.y }, player.magnetRange));
-  dropItems = dropItems.filter(item => !item.isDead);
-
-  // If boss died, spawn continuous massive explosions at bossDeathPos
-  if (bossDeathPos && stageClearTimer > 30) {
-    if (stageClearTimer % 6 === 0) {
-      const rx = bossDeathPos.x + (Math.random() - 0.5) * 160;
-      const ry = bossDeathPos.y + (Math.random() - 0.5) * 160;
-      const mockProj = { id: 22, splashRadius: 100, behavior: 'explosive' };
-      spawnHitEffect(rx, ry, mockProj, 1.8);
-
-      if (stageClearTimer % 12 === 0) {
-        const textOption = ["BOOM!", "CRASH!", "KABOOM!", "DESTROYED!"][Math.floor(Math.random() * 4)];
-        spawnTextParticle(rx, ry, textOption, "#ff3300");
-      }
-    }
-  }
-
-  if (stageClearTimer <= 0) {
+  if (result.completed) {
     boss = null;
     bossDeathPos = null;
     openShopScreen();
