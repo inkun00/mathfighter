@@ -1,3 +1,5 @@
+import { FINAL_STAGE, PROBLEM_DURATION, REGULAR_STAGE_DURATION } from './stageRules.js';
+
 export const ACTIVE_SESSION_KEY = 'math_fighter_active_session';
 export const SESSION_SCHEMA_VERSION = 1;
 
@@ -20,14 +22,14 @@ function normalizeSession(parsed) {
   if (!RESTORABLE_STATES.has(parsed.gameState)) return null;
 
   const currentStage = Number(parsed.currentStage);
-  if (!Number.isFinite(currentStage) || currentStage < 1 || currentStage > 50) return null;
+  if (!Number.isFinite(currentStage) || currentStage < 1 || currentStage > FINAL_STAGE) return null;
 
   return {
     ...parsed,
     schemaVersion: SESSION_SCHEMA_VERSION,
     currentStage: Math.floor(currentStage),
-    stageTimer: Number.isFinite(parsed.stageTimer) ? parsed.stageTimer : 90,
-    problemTimer: Number.isFinite(parsed.problemTimer) ? parsed.problemTimer : 30,
+    stageTimer: Number.isFinite(parsed.stageTimer) ? parsed.stageTimer : REGULAR_STAGE_DURATION,
+    problemTimer: Number.isFinite(parsed.problemTimer) ? parsed.problemTimer : PROBLEM_DURATION,
     brainTrainingCompletedStages: Array.isArray(parsed.brainTrainingCompletedStages)
       ? parsed.brainTrainingCompletedStages
       : [],
