@@ -9,6 +9,10 @@ lerna-debug.log*
 dev-server.log
 dev-server.err.log
 
+# Local environment variables
+.env
+.env.local
+
 # Dependency directories
 node_modules/
 jspm_packages/

@@ -10,67 +10,7 @@ import {
 } from './shop.js';
 import { openBrainTrainingModal, openExamModal } from './exam.js';
 import { showCertificate, saveCertificate } from './certificate.js';
-
-const KNOWN_CATEGORIES = [
-  "포유류", "조류(새)", "조류", "파충류", "양서류", "어류", "곤충류",
-  "현화식물(꽃 피는 식물)", "현화식물", "침엽수", "양치식물", "이끼류",
-  "버섯류 및 균류", "버섯류", "단세포/다세포 원생생물", "원생생물",
-  "대표 세균류", "세균류", "대표 고세균", "고세균", "균류"
-];
-
-function decodeHtmlEntities(str) {
-  const txt = document.createElement("textarea");
-  txt.innerHTML = str;
-  return txt.value;
-}
-
-function fetchWithTimeout(url, options = {}, timeout = 3500) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  return fetch(url, { ...options, signal: controller.signal })
-    .then(res => {
-      clearTimeout(id);
-      return res;
-    })
-    .catch(err => {
-      clearTimeout(id);
-      throw err;
-    });
-}
-
-function parsePadletText(text) {
-  const parts = text.split('●');
-  const categories = [];
-
-  for (let i = 1; i < parts.length; i++) {
-    const rawPart = parts[i].trim();
-    if (!rawPart) continue;
-
-    // Split by comma: first element = category name, rest = items
-    const items = rawPart.split(',').map(item => item.trim()).filter(Boolean);
-    if (items.length < 2) continue; // Need at least a name + 1 item
-
-    const catName = items[0];
-    const catItems = items.slice(1);
-
-    // Clean trailing emojis from the last item
-    const lastIdx = catItems.length - 1;
-    if (lastIdx >= 0) {
-      catItems[lastIdx] = catItems[lastIdx].split(/🌱|🐾|🍄|🧫|🦠|🧬/)[0].trim();
-    }
-
-    const cleanItems = catItems.map(x => x.trim()).filter(Boolean);
-    if (catName && cleanItems.length > 0) {
-      categories.push({
-        name: catName,
-        items: cleanItems
-      });
-    }
-  }
-
-  console.log('[Parser] Parsed categories:', categories.map(c => `${c.name}(${c.items.length})`));
-  return categories;
-}
+import { loadCustomQuizFromPadletUrl } from './customQuiz.js';
 
 // Game variables
 let canvas, ctx;
@@ -907,100 +847,11 @@ function setupEventListeners() {
     const errorEl = document.getElementById('urlLoadError');
     const loadBtn = document.getElementById('loadCustomGameBtn');
 
-    if (!url) {
-      errorEl.innerText = "게시물 주소를 입력해 주세요.";
-      return;
-    }
-
-    if (!url.includes('padlet.com')) {
-      errorEl.innerText = "올바른 패들릿 주소가 아닙니다.";
-      return;
-    }
-
-    if (!url.includes('/wish/') && !url.includes('/posts/')) {
-      errorEl.innerText = "오류: 입력하신 주소는 패들릿 보드 주소입니다. 보드 안의 퀴즈 게시물(Post)을 클릭하여 '게시물 열기'를 하신 후, 해당 개별 게시물 주소를 복사해 입력해 주세요.";
-      return;
-    }
-
     try {
       errorEl.innerText = "문제를 구성하는 중입니다...";
       loadBtn.disabled = true;
 
-      let contents = null;
-
-      // Try Proxy 1: Local Node.js Middleware (100% reliable, direct node-fetch)
-      try {
-        const localApiUrl = `/api/fetch-padlet?url=${encodeURIComponent(url)}`;
-        const responseLocal = await fetchWithTimeout(localApiUrl, {}, 15000);
-        if (responseLocal.ok) {
-          contents = await responseLocal.text();
-          console.log("SUCCESS using Proxy 1 (Local Node.js Middleware)");
-        }
-      } catch (errLocal) {
-        console.warn("Proxy 1 (Local Node.js Middleware) failed:", errLocal);
-      }
-
-      // Try Proxy 2: allorigins.win raw (Fallback 1)
-      if (!contents) {
-        try {
-          const proxyUrl1 = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-          const response1 = await fetchWithTimeout(proxyUrl1, {}, 8000); // Increased timeout to 8s
-          if (response1.ok) {
-            contents = await response1.text();
-            console.log("SUCCESS using Proxy 2 (allorigins raw)");
-          }
-        } catch (err1) {
-          console.warn("Proxy 2 (allorigins raw) failed:", err1);
-        }
-      }
-
-      // Try Proxy 3: corsproxy.io (Fallback 2)
-      // Note: Passing unencoded URL to avoid 403 Forbidden errors
-      if (!contents) {
-        try {
-          const proxyUrl2 = `https://corsproxy.io/?${url}`;
-          const response2 = await fetchWithTimeout(proxyUrl2, {}, 8000); // Increased timeout to 8s
-          if (response2.ok) {
-            contents = await response2.text();
-            console.log("SUCCESS using Proxy 3 (corsproxy.io)");
-          }
-        } catch (err2) {
-          console.warn("Proxy 3 (corsproxy.io) failed:", err2);
-        }
-      }
-
-      // Try Proxy 4: api.codetabs.com (Fallback 3)
-      // Note: Passing unencoded URL and using trailing slash to avoid 400 Bad Request
-      if (!contents) {
-        try {
-          const proxyUrl3 = `https://api.codetabs.com/v1/proxy/?quest=${url}`;
-          const response3 = await fetchWithTimeout(proxyUrl3, {}, 8000); // Increased timeout to 8s
-          if (response3.ok) {
-            contents = await response3.text();
-            console.log("SUCCESS using Proxy 4 (codetabs)");
-          }
-        } catch (err3) {
-          console.warn("Proxy 4 (codetabs) failed:", err3);
-        }
-      }
-
-      if (!contents) {
-        throw new Error("네트워크 연결 오류 또는 모든 프록시 경로가 차단되었습니다. 잠시 후 다시 시도해 주세요.");
-      }
-
-      // Find og:description or name="description"
-      const metaRegex = /<meta\s+(?:property="og:description"|name="description")\s+content="([^"]+)"/i;
-      const match = contents.match(metaRegex);
-      if (!match) throw new Error("게시물에서 교과 퀴즈 텍스트를 찾을 수 없습니다.");
-
-      const decodedText = decodeHtmlEntities(match[1]);
-      const categories = parsePadletText(decodedText);
-
-      if (categories.length === 0) {
-        throw new Error("분류 퀴즈 데이터를 파싱할 수 없습니다. 형식을 확인하세요.");
-      }
-
-      // Load quiz data and start game
+      const categories = await loadCustomQuizFromPadletUrl(url);
       setCustomQuizData(categories);
 
       // Save custom game data & URL to localStorage
