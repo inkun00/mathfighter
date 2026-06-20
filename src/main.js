@@ -22,10 +22,7 @@ import {
   PROBLEM_DURATION,
   REGULAR_STAGE_DURATION,
   getFinalStage,
-  getNextStageProgress,
-  getStageClearFrames,
   getStageClearLabel,
-  getStageClearReward,
   getStageTimers,
   isBossStage
 } from './stageRules.js';
@@ -40,7 +37,14 @@ import {
 } from './monsterResolver.js';
 import { createBossGimmickProblem, resolveBossUpdate } from './bossResolver.js';
 import { resolveGameTimerTick, resolveMonsterSpawns } from './gameFlow.js';
-import { resolveStageClearFrame } from './stageClearResolver.js';
+import {
+  createStageClearState,
+  resolveStageClearFrame
+} from './stageClearResolver.js';
+import {
+  getNextStageTransition,
+  getPlayerDeathTransition
+} from './runProgress.js';
 
 // Game variables
 let canvas, ctx;
@@ -729,11 +733,10 @@ function setupEventListeners() {
   document.getElementById('nextStageBtn').addEventListener('click', () => {
     blurActiveControl();
     document.getElementById('shopScreen').classList.add('hidden');
-    const progress = getNextStageProgress(currentStage);
-    currentStage = progress.nextStage;
+    const transition = getNextStageTransition(currentStage);
+    currentStage = transition.currentStage;
 
-    if (progress.completed) {
-      // Game fully completed! Show Certificate
+    if (transition.destination === 'certificate') {
       openCertificateScreen();
     } else {
       loadStage(currentStage);
@@ -1273,16 +1276,16 @@ function openCertificateScreen() {
 
 // triggers review paper after death
 function handlePlayerDeath() {
-  if (isDeathHandled) return;
-  isDeathHandled = true;
+  const transition = getPlayerDeathTransition({ isDeathHandled, usedReviewRevive });
+  if (transition.destination === 'ignore') return;
+  isDeathHandled = transition.isDeathHandled;
+  usedReviewRevive = transition.usedReviewRevive;
 
-  if (usedReviewRevive) {
+  if (transition.destination === 'certificate') {
     if (player) player.hp = 0;
     openCertificateScreen();
     return;
   }
-
-  usedReviewRevive = true;
 
   // Keep existing gold/upgrades so revival rewards add onto the current wallet.
   if (player) {
@@ -1674,23 +1677,22 @@ function triggerStageClear(isBoss = false) {
   monsters = [];
   monsterProjectiles = [];
 
-  if (isBoss && boss) {
-    const goldReward = getStageClearReward(currentStage, true);
-    addGold(goldReward);
-    player.gold = getGold();
-    spawnTextParticle(boss.x, boss.y - 40, `BOSS DEFEATED! +${goldReward}G`, '#ffd700');
-    
-    bossDeathPos = { x: boss.x, y: boss.y };
-    stageClearTimer = getStageClearFrames(true);
-  } else {
-    const goldReward = getStageClearReward(currentStage, false);
-    addGold(goldReward);
-    player.gold = getGold();
-    spawnTextParticle(player.x, player.y - 30, `STAGE SURVIVED! +${goldReward}G`, '#39ff14');
-    
-    bossDeathPos = null;
-    stageClearTimer = getStageClearFrames(false);
-  }
+  const clearState = createStageClearState({
+    stage: currentStage,
+    isBoss,
+    boss,
+    player
+  });
+  addGold(clearState.goldReward);
+  player.gold = getGold();
+  spawnTextParticle(
+    clearState.textParticle.x,
+    clearState.textParticle.y,
+    clearState.textParticle.text,
+    clearState.textParticle.color
+  );
+  bossDeathPos = clearState.bossDeathPos;
+  stageClearTimer = clearState.stageClearTimer;
   
   gameState = 'stageClear';
   saveSessionSnapshot();

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveStageClearFrame } from '../src/stageClearResolver.js';
+import {
+  createStageClearState,
+  resolveStageClearFrame
+} from '../src/stageClearResolver.js';
 
 function createEntity(overrides = {}) {
   return {
@@ -35,6 +38,48 @@ function resolve(overrides = {}) {
   });
   return { result, effects, texts };
 }
+
+test('creates regular-stage clear rewards and presentation state', () => {
+  const result = createStageClearState({
+    stage: 7,
+    isBoss: false,
+    boss: null,
+    player: { x: 100, y: 200 }
+  });
+
+  assert.deepEqual(result, {
+    goldReward: 200,
+    bossDeathPos: null,
+    stageClearTimer: 120,
+    textParticle: {
+      x: 100,
+      y: 170,
+      text: 'STAGE SURVIVED! +200G',
+      color: '#39ff14'
+    }
+  });
+});
+
+test('creates boss clear rewards and preserves the death position', () => {
+  const result = createStageClearState({
+    stage: 20,
+    isBoss: true,
+    boss: { x: 300, y: 400 },
+    player: { x: 100, y: 200 }
+  });
+
+  assert.deepEqual(result, {
+    goldReward: 1000,
+    bossDeathPos: { x: 300, y: 400 },
+    stageClearTimer: 180,
+    textParticle: {
+      x: 300,
+      y: 360,
+      text: 'BOSS DEFEATED! +1000G',
+      color: '#ffd700'
+    }
+  });
+});
 
 test('updates and removes stage-clear entities', () => {
   const projectile = createEntity({

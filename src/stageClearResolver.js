@@ -1,7 +1,28 @@
 import { resolvePlayerProjectileUpdates } from './combatResolver.js';
 import { resolveMonsterProjectileUpdates } from './monsterResolver.js';
+import { getStageClearFrames, getStageClearReward } from './stageRules.js';
 
 const EXPLOSION_LABELS = ['BOOM!', 'CRASH!', 'KABOOM!', 'DESTROYED!'];
+
+export function createStageClearState({ stage, isBoss, boss, player }) {
+  const bossClear = Boolean(isBoss && boss);
+  const goldReward = getStageClearReward(stage, bossClear);
+  const source = bossClear ? boss : player;
+
+  return {
+    goldReward,
+    bossDeathPos: bossClear ? { x: boss.x, y: boss.y } : null,
+    stageClearTimer: getStageClearFrames(bossClear),
+    textParticle: {
+      x: source.x,
+      y: source.y - (bossClear ? 40 : 30),
+      text: bossClear
+        ? `BOSS DEFEATED! +${goldReward}G`
+        : `STAGE SURVIVED! +${goldReward}G`,
+      color: bossClear ? '#ffd700' : '#39ff14'
+    }
+  };
+}
 
 export function resolveStageClearFrame({
   stageClearTimer,
