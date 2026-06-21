@@ -1,5 +1,18 @@
-const SPLASH_PERSISTENT_BEHAVIORS = new Set(['throw_fire', 'shockwave', 'nova']);
-const BOSS_PERSISTENT_BEHAVIORS = new Set(['pierce', 'boomerang', 'shockwave', 'nova']);
+const SPLASH_PERSISTENT_BEHAVIORS = new Set([
+  'throw_fire',
+  'shockwave',
+  'nova',
+  'void_pierce',
+  'dash_wave'
+]);
+const BOSS_PERSISTENT_BEHAVIORS = new Set([
+  'pierce',
+  'void_pierce',
+  'dash_wave',
+  'boomerang',
+  'shockwave',
+  'nova'
+]);
 
 export function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -80,7 +93,7 @@ function resolveRailLaser(projectile, monsters, boss, onMonsterDefeat, onHitEffe
     if (distance >= monster.radius + projectile.radius) return;
 
     projectile.hitTargets?.add(monster);
-    applyProjectileImpact(monster, projectile, 1.08);
+    applyProjectileImpact(monster, projectile, projectile.behavior === 'plasma_rail' ? 1.25 : 1.08);
     onHitEffect(monster.x, monster.y, projectile, 0.85);
     defeatMonsterIfNeeded(monster, onMonsterDefeat);
   });
@@ -97,8 +110,45 @@ function resolveRailLaser(projectile, monsters, boss, onMonsterDefeat, onHitEffe
   if (distance >= boss.radius + projectile.radius) return;
 
   projectile.hitTargets?.add(boss);
-  boss.takeDamage(projectile.dmg * 0.75);
+  boss.takeDamage(projectile.dmg * (projectile.behavior === 'plasma_rail' ? 0.92 : 0.75));
   onHitEffect(boss.x, boss.y, projectile, 1.25);
+}
+
+function resolveGravityWell(projectile, monsters, boss, now, onMonsterDefeat, onHitEffect) {
+  if (!projectile.canApplyAreaTick(now)) return;
+
+  monsters.forEach(monster => {
+    if (monster.hp <= 0) return;
+    if (distanceBetween(monster, projectile) >= monster.radius + projectile.splashRadius) return;
+
+    applyProjectileImpact(monster, projectile, 0.22);
+    onHitEffect(monster.x, monster.y, projectile, 0.7);
+    defeatMonsterIfNeeded(monster, onMonsterDefeat);
+  });
+
+  if (!canDamageBoss(boss)) return;
+  if (distanceBetween(boss, projectile) >= boss.radius + projectile.splashRadius) return;
+  boss.takeDamage(projectile.dmg * 0.16);
+  onHitEffect(boss.x, boss.y, projectile, 0.85);
+}
+
+function applyChainLightning(projectile, primary, monsters, onMonsterDefeat, onHitEffect) {
+  const chainedTargets = monsters
+    .filter(monster => (
+      monster !== primary &&
+      monster.hp > 0 &&
+      !projectile.hitTargets?.has(monster) &&
+      distanceBetween(primary, monster) < 220
+    ))
+    .sort((a, b) => distanceBetween(primary, a) - distanceBetween(primary, b))
+    .slice(0, 5);
+
+  chainedTargets.forEach((monster, index) => {
+    projectile.hitTargets?.add(monster);
+    applyProjectileImpact(monster, projectile, Math.max(0.38, 0.72 - index * 0.08));
+    onHitEffect(monster.x, monster.y, projectile, 0.8 - index * 0.08);
+    defeatMonsterIfNeeded(monster, onMonsterDefeat);
+  });
 }
 
 function resolveFirePatch(projectile, monsters, boss, now, onMonsterDefeat, onHitEffect) {
@@ -131,6 +181,10 @@ function resolveMonsterHits(projectile, monsters, onMonsterDefeat, onHitEffect) 
     applyProjectileImpact(monster, projectile);
     onHitEffect(projectile.x, projectile.y, projectile);
     projectile.hitCount++;
+
+    if (projectile.behavior === 'chain_lightning') {
+      applyChainLightning(projectile, monster, monsters, onMonsterDefeat, onHitEffect);
+    }
 
     if (projectile.behavior === 'throw_fire') {
       projectile.activateFirePatch();
@@ -203,13 +257,18 @@ export function resolveProjectileCollisions({
   onHitEffect
 }) {
   projectiles.forEach(projectile => {
-    if (projectile.behavior === 'rail_laser') {
+    if (['rail_laser', 'plasma_rail'].includes(projectile.behavior)) {
       resolveRailLaser(projectile, monsters, boss, onMonsterDefeat, onHitEffect);
       return;
     }
 
     if (projectile.behavior === 'fire_patch') {
       resolveFirePatch(projectile, monsters, boss, now, onMonsterDefeat, onHitEffect);
+      return;
+    }
+
+    if (projectile.behavior === 'gravity_well') {
+      resolveGravityWell(projectile, monsters, boss, now, onMonsterDefeat, onHitEffect);
       return;
     }
 
