@@ -170,6 +170,38 @@ test('activates and fails a real stage 10 boss gimmick', async ({ page }) => {
   expect(failedState.boss.isGimmickActive).toBe(false);
 });
 
+test('runs a legendary chain, gravity, and nova loadout', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('math_fighter_save', JSON.stringify({
+      gold: 999999,
+      equippedWeaponIds: [23, 25, 30],
+      ownedWeaponIds: Array.from({ length: 30 }, (_, index) => index + 1),
+      weaponLevels: Object.fromEntries(Array.from(
+        { length: 30 },
+        (_, index) => [index + 1, 1]
+      )),
+      upgrades: { maxHp: 0, atk: 0, def: 0, magnet: 0, goldBonus: 0 },
+      wrongAreas: []
+    }));
+  });
+  await seedShopSession(page, 9);
+
+  await page.goto('/');
+  const finalWeaponCard = page.locator('#weaponShopList .shop-card').nth(29);
+  await expect(finalWeaponCard.locator('.card-desc')).toContainText('화면 전역 노바');
+  await expect(finalWeaponCard.locator('.card-desc')).toContainText('광역 잠재력');
+
+  await page.locator('#nextStageBtn').click();
+  await expect(page.locator('#stageNum')).toHaveText('10');
+  await page.waitForTimeout(1800);
+
+  const canvasImage = await page.locator('#gameCanvas').screenshot();
+  expect(canvasImage.byteLength).toBeGreaterThan(10000);
+  expect(pageErrors).toEqual([]);
+});
+
 test('completes the run after stage 50', async ({ page }) => {
   await seedShopSession(page, 50);
 

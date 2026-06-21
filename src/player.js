@@ -1,4 +1,12 @@
 import { getStatValue, getEquippedWeapons, WEAPONS_DB, getWeaponLevel } from './shop.js';
+import {
+  getWeaponBehavior,
+  getWeaponPatternProfile,
+  getWeaponPowerScale,
+  getWeaponRange,
+  getWeaponTierMultiplier,
+  getWeaponVisualProfile
+} from './weaponProfiles.js';
 
 const projectileIconCache = new Map();
 const firePatchSheet = new Image();
@@ -15,34 +23,9 @@ function getProjectileIconImage(id) {
   return projectileIconCache.get(id);
 }
 
-function getWeaponBehavior(id, type) {
-  if (id === 13) return 'rail_laser';
-  if ([18].includes(id)) return 'shockwave';
-  if ([30].includes(id)) return 'nova';
-  if ([4, 20].includes(id)) return 'boomerang';
-  if ([6, 17, 22].includes(id)) return 'throw_fire';
-  if ([8, 11, 21, 29].includes(id)) return 'cone_blast';
-  if ([3, 12, 19, 27, 28, 30].includes(id)) return 'spread';
-  if ([14].includes(id)) return 'mine';
-  if ([16].includes(id)) return 'orbit';
-  if ([5, 7, 13, 19, 24, 26, 29].includes(id)) return 'pierce';
-  if ([2, 9, 15, 23, 25, 28].includes(id)) return 'homing';
-  if ([8, 11, 21].includes(id)) return 'explosive';
-  if (type === 'splash') return 'explosive';
-  if (type === 'pierce') return 'pierce';
-  if (type === 'homing') return 'homing';
-  return 'straight';
-}
-
-function getWeaponPowerScale(id) {
-  if (id >= 30) return 2.4;
-  if (id >= 27) return 2.0;
-  if (id >= 24) return 1.75;
-  if (id >= 21) return 1.55;
-  if (id >= 18) return 1.35;
-  if (id >= 11) return 1.18;
-  return 1;
-}
+const HOMING_BEHAVIORS = new Set(['homing', 'chain_lightning', 'missile_swarm']);
+const RAIL_BEHAVIORS = new Set(['rail_laser', 'plasma_rail']);
+const STATIONARY_BEHAVIORS = new Set(['mine', 'fire_patch', 'gravity_well', 'rail_laser', 'plasma_rail']);
 
 function getWeaponLevelBonus(id) {
   const level = getWeaponLevel(id);
@@ -65,20 +48,6 @@ function getWeaponStatusEffect(id) {
   return null;
 }
 
-function getWeaponRange(id, behavior) {
-  if (behavior === 'rail_laser') return 1600;
-  if ([6, 17, 22].includes(id)) return id >= 22 ? 210 : 180;
-  if ([8, 11, 21, 29, 30].includes(id)) return id >= 21 ? 230 : 210;
-  if (behavior === 'shockwave') return 250;
-  if (behavior === 'nova') return 320;
-  if ([3, 12, 27, 28].includes(id)) return 260;
-  if (behavior === 'orbit') return 170;
-  if (behavior === 'mine') return 150;
-  if (behavior === 'pierce') return id >= 24 ? 520 : 450;
-  if (behavior === 'homing') return 430;
-  return 360;
-}
-
 function getSlotAngleOffset(slotIndex, slotCount) {
   if (slotCount <= 1) return 0;
   const offsets = slotCount >= 3 ? [-0.1, 0, 0.1] : [-0.07, 0.07];
@@ -99,9 +68,9 @@ export class Projectile {
       this.dmg = weapon.dmg * getWeaponPowerScale(weapon.id) * levelBonus.damageScale * (1 + getStatValue('atk') / 100) * (player.atkMultiplier || 1) * damageMultiplier;
       this.symbol = weapon.symbol;
       this.speed = 6 * (options.speedMultiplier || 1);
-      this.radius = Math.round((options.radius || (['mine', 'fire_patch'].includes(this.behavior) ? 20 : 12)) * levelBonus.sizeScale);
+      this.radius = Math.round((options.radius || (['mine', 'fire_patch', 'gravity_well'].includes(this.behavior) ? 20 : 12)) * levelBonus.sizeScale);
       this.color = '#00ffff';
-      this.lifeTime = options.lifeTime || (this.behavior === 'rail_laser' ? 240 : this.behavior === 'mine' ? 7000 : this.behavior === 'boomerang' ? 2800 : 2000);
+      this.lifeTime = options.lifeTime || (RAIL_BEHAVIORS.has(this.behavior) ? 280 : this.behavior === 'gravity_well' ? 5200 : this.behavior === 'mine' ? 7000 : this.behavior === 'boomerang' ? 2800 : 2000);
       this.createdTime = Date.now();
       this.startX = x;
       this.startY = y;
@@ -109,7 +78,7 @@ export class Projectile {
       this.lastAreaTickTime = 0;
       this.areaTickInterval = 350;
       this.hitCount = 0;
-      this.pierceLimit = ['shockwave', 'nova'].includes(this.behavior)
+      this.pierceLimit = ['shockwave', 'nova', 'plasma_rail', 'gravity_well', 'void_pierce', 'dash_wave'].includes(this.behavior)
         ? 999
         : this.behavior === 'pierce'
           ? (weapon.id >= 20 ? 999 : 5)
@@ -117,14 +86,14 @@ export class Projectile {
             ? 8
             : 1;
       this.hitTargets = new WeakSet();
-      this.splashRadius = ['explosive', 'cone_blast', 'mine', 'throw_fire', 'fire_patch', 'shockwave', 'nova'].includes(this.behavior) || this.type === 'splash' || [15, 23, 25, 28].includes(weapon.id)
+      this.splashRadius = ['explosive', 'cone_blast', 'mine', 'throw_fire', 'fire_patch', 'shockwave', 'nova', 'gravity_well', 'void_pierce', 'elemental_bolt', 'missile_swarm', 'dash_wave'].includes(this.behavior) || this.type === 'splash' || [15, 23, 25, 28].includes(weapon.id)
         ? (weapon.id >= 30 ? 145 : weapon.id >= 23 ? 118 : weapon.id >= 20 ? 105 : weapon.id === 8 ? 52 : 65)
         : 0;
       this.splashRadius = Math.round(this.splashRadius * levelBonus.splashScale);
       this.isDead = false;
       this.player = player;
       this.id = weapon.id;
-      this.statusEffect = getWeaponStatusEffect(weapon.id);
+      this.statusEffect = options.statusEffect || getWeaponStatusEffect(weapon.id);
       this.isParabolic = Boolean(weapon.name && weapon.name.includes("투척기"));
       this.z = 0;
 
@@ -141,7 +110,7 @@ export class Projectile {
       this.vy = Math.sin(this.angle) * this.speed;
 
       // Custom properties for specific weapons
-      if (this.behavior === 'rail_laser') {
+      if (RAIL_BEHAVIORS.has(this.behavior)) {
         this.speed = 0;
         this.vx = 0;
         this.vy = 0;
@@ -156,6 +125,17 @@ export class Projectile {
         this.orbitAngle = options.orbitAngle || 0;
         this.orbitSpeed = 0.05;
       }
+      if (this.behavior === 'gravity_well') {
+        this.x = targetX;
+        this.y = targetY;
+        this.startX = targetX;
+        this.startY = targetY;
+        this.speed = 0;
+        this.vx = 0;
+        this.vy = 0;
+        this.radius = Math.max(this.radius, 28);
+        this.splashRadius = Math.max(this.splashRadius, Math.round(135 * levelBonus.splashScale));
+      }
     } catch (err) {
       window.alert("Error in Projectile constructor: " + err.stack);
     }
@@ -164,12 +144,12 @@ export class Projectile {
   update(monsters, playerPos) {
     try {
       const elapsed = Date.now() - this.createdTime;
-      if (this.behavior !== 'mine' && elapsed > this.lifeTime) {
+      if (elapsed > this.lifeTime) {
         this.isDead = true;
         return;
       }
 
-      if (this.behavior === 'mine' || this.behavior === 'fire_patch' || this.behavior === 'rail_laser') {
+      if (STATIONARY_BEHAVIORS.has(this.behavior)) {
         return;
       }
 
@@ -183,7 +163,7 @@ export class Projectile {
       }
 
       // Homing logic: update target if needed
-      if (this.behavior === 'homing' && monsters.length > 0) {
+      if (HOMING_BEHAVIORS.has(this.behavior) && monsters.length > 0) {
         // Find closest active monster
         let closest = null;
         let minDist = Infinity;
@@ -282,6 +262,8 @@ export class Projectile {
   }
 
   draw(ctx) {
+    const visualProfile = getWeaponVisualProfile(this.id);
+
     // Tesla Fusion Gun (ID 23) special lightning drawing: Character's body to target monster
     if (this.id === 23) {
       if (!this.player) return;
@@ -324,7 +306,7 @@ export class Projectile {
       ctx.lineJoin = 'round';
       
       // Outer glow blue aura
-      ctx.shadowBlur = 18;
+      ctx.shadowBlur = visualProfile.glowBlur;
       ctx.shadowColor = '#00f6ff';
       drawLightningArc(startX, startY, targetX, targetY, 16, 4.8, 'rgba(0, 212, 255, 0.45)');
       
@@ -336,7 +318,7 @@ export class Projectile {
       drawLightningArc(startX, startY, targetX, targetY, 7, 1.2, '#ffffff');
 
       // Static discharges around target
-      const sparkCount = 3 + Math.floor(Math.random() * 3);
+      const sparkCount = visualProfile.rank + 2 + Math.floor(Math.random() * 3);
       for (let s = 0; s < sparkCount; s++) {
         const angle = Math.random() * Math.PI * 2;
         const sparkLen = 9 + Math.random() * 15;
@@ -367,18 +349,42 @@ export class Projectile {
     ctx.translate(this.x, this.y - (this.z || 0));
     ctx.rotate(this.angle);
 
-    if (this.behavior === 'rail_laser') {
+    if (this.behavior === 'gravity_well') {
+      const elapsed = Date.now() - this.createdTime;
+      const pulse = 0.82 + Math.sin(elapsed / 110) * 0.12;
+      ctx.rotate(-this.angle + elapsed / 650);
+      ctx.globalAlpha = 0.82;
+      ctx.strokeStyle = '#b35cff';
+      ctx.fillStyle = 'rgba(35, 0, 70, 0.58)';
+      ctx.shadowColor = '#d884ff';
+      ctx.shadowBlur = visualProfile.glowBlur;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, this.splashRadius * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      for (let ring = 1; ring <= 3; ring++) {
+        ctx.globalAlpha = 0.5 / ring;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.splashRadius * (0.28 + ring * 0.18) * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+
+    if (RAIL_BEHAVIORS.has(this.behavior)) {
       const elapsed = Date.now() - this.createdTime;
       const progress = Math.min(1, elapsed / this.lifeTime);
       const alpha = Math.sin(progress * Math.PI);
       const frameCount = 5;
       const frame = Math.min(frameCount - 1, Math.floor((elapsed / this.lifeTime) * frameCount));
       const beamLength = this.maxRange;
-      const beamHeight = this.radius * 3.2;
+      const beamHeight = this.radius * (this.behavior === 'plasma_rail' ? 4.6 : 3.2);
 
       ctx.globalAlpha = Math.max(0.28, alpha);
-      ctx.shadowColor = '#00eaff';
-      ctx.shadowBlur = 24;
+      ctx.shadowColor = this.behavior === 'plasma_rail' ? '#ff4dff' : '#00eaff';
+      ctx.shadowBlur = visualProfile.glowBlur;
 
       if (electromagneticLaserSheet.complete && electromagneticLaserSheet.naturalWidth !== 0) {
         const sw = electromagneticLaserSheet.naturalWidth;
@@ -457,10 +463,33 @@ export class Projectile {
 
     const iconImg = getProjectileIconImage(this.id);
     if (iconImg.complete && iconImg.naturalWidth !== 0) {
-      ctx.shadowColor = this.splashRadius > 0 ? '#ff7a00' : '#00ffff';
-      ctx.shadowBlur = 8;
-      const drawSize = this.behavior === 'mine' ? 42 : 32;
+      if (visualProfile.trailCount > 0 && !['mine', 'orbit'].includes(this.behavior)) {
+        ctx.fillStyle = visualProfile.color;
+        ctx.shadowColor = visualProfile.color;
+        ctx.shadowBlur = visualProfile.glowBlur * 0.65;
+        for (let i = visualProfile.trailCount; i >= 1; i--) {
+          ctx.globalAlpha = 0.08 + (visualProfile.trailCount - i) * 0.06;
+          ctx.beginPath();
+          ctx.arc(-i * (6 + visualProfile.rank), 0, Math.max(2, this.radius * (1 - i * 0.1)), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.shadowColor = visualProfile.color;
+      ctx.shadowBlur = visualProfile.glowBlur;
+      const drawSize = this.behavior === 'mine'
+        ? visualProfile.drawSize + 10
+        : visualProfile.drawSize;
       ctx.drawImage(iconImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+      if (visualProfile.rank >= 4) {
+        ctx.globalAlpha = 0.72;
+        ctx.strokeStyle = visualProfile.color;
+        ctx.lineWidth = Math.max(2, visualProfile.rank - 2);
+        ctx.beginPath();
+        ctx.arc(0, 0, drawSize * 0.62, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       if (this.behavior === 'mine') {
         ctx.strokeStyle = 'rgba(255, 170, 0, 0.65)';
         ctx.lineWidth = 2;
@@ -635,6 +664,11 @@ export class Player {
         const behavior = getWeaponBehavior(weapon.id, weapon.type);
         const weaponRange = getWeaponRange(weapon.id, behavior);
         const levelBonus = getWeaponLevelBonus(weapon.id);
+        const patternProfile = getWeaponPatternProfile(
+          weapon.id,
+          behavior,
+          levelBonus.projectileBonus
+        );
 
         // Find closest active monster
         let closest = null;
@@ -667,7 +701,7 @@ export class Player {
           const xOffset = weapons.length > 1 ? slotOffsets[index] : 0;
           const slotDamageMultipliers = weapons.length >= 3 ? [0.9, 0.8, 0.72] : [0.95, 0.82];
           const dualWieldMultiplier = weapons.length > 1 ? slotDamageMultipliers[index] : 1;
-          const tierMultiplier = weapon.id >= 21 ? 1.18 : weapon.id >= 11 ? 1.08 : 1;
+          const tierMultiplier = getWeaponTierMultiplier(weapon.id);
           const damageMultiplier = dualWieldMultiplier * tierMultiplier;
           const slotAngleOffset = getSlotAngleOffset(index, weapons.length);
           const targetX = closest.x;
@@ -683,55 +717,69 @@ export class Player {
             }));
           };
 
-          if (behavior === 'cone_blast') {
-            const blastCount = (weapon.id >= 21 ? 9 : weapon.id >= 11 ? 7 : 5) + levelBonus.projectileBonus;
+          if (['cone_blast', 'dash_wave'].includes(behavior)) {
+            const blastCount = patternProfile.count;
             const blastSpread = weapon.id >= 21 ? 1.45 : weapon.id >= 11 ? 1.18 : 0.95;
             for (let i = 0; i < blastCount; i++) {
               const centeredIndex = i - (blastCount - 1) / 2;
               spawnProjectile(centeredIndex * (blastSpread / (blastCount - 1)), {
-                behavior: 'cone_blast',
-                damageMultiplier: damageMultiplier * (weapon.id >= 21 ? 0.7 : 0.62),
+                behavior,
+                damageMultiplier: damageMultiplier * patternProfile.damageScale,
                 speedMultiplier: weapon.id >= 21 ? 1.05 : 0.92,
                 maxRange: weaponRange,
                 radius: weapon.id >= 21 ? 22 : 16
               });
             }
-          } else if (behavior === 'spread') {
-            const spreadCount = (weapon.id >= 28 ? 8 : weapon.id >= 19 ? 5 : 3) + levelBonus.projectileBonus;
+          } else if (['spread', 'elemental_burst', 'missile_swarm'].includes(behavior)) {
+            const spreadCount = patternProfile.count;
             const spreadStep = weapon.id >= 28 ? Math.PI * 2 / spreadCount : 0.22;
             for (let i = 0; i < spreadCount; i++) {
               const centeredIndex = i - (spreadCount - 1) / 2;
               const angleOffset = weapon.id >= 28 ? i * spreadStep : centeredIndex * spreadStep;
+              const elementalEffects = [
+                { type: 'burn', duration: 3600, power: 0.12 },
+                { type: 'gravity', duration: 1800, slow: 0.55 },
+                { type: 'shock', duration: 1500, slow: 0.5 }
+              ];
               spawnProjectile(angleOffset, {
-                behavior: weapon.id === 12 ? 'explosive' : weapon.id >= 28 ? 'homing' : 'pierce',
-                damageMultiplier: damageMultiplier * (weapon.id === 12 ? 0.82 : weapon.id >= 28 ? 0.72 : 0.65),
-                speedMultiplier: 1.05
+                behavior: weapon.id === 12
+                  ? 'explosive'
+                  : behavior === 'missile_swarm'
+                    ? 'missile_swarm'
+                    : behavior === 'elemental_burst'
+                      ? 'elemental_bolt'
+                      : 'pierce',
+                damageMultiplier: damageMultiplier * patternProfile.damageScale,
+                speedMultiplier: 1.05,
+                statusEffect: behavior === 'elemental_burst'
+                  ? elementalEffects[i % elementalEffects.length]
+                  : undefined
               });
             }
           } else if (behavior === 'shockwave') {
-            const waveCount = 12 + levelBonus.projectileBonus * 2;
+            const waveCount = patternProfile.count;
             for (let i = 0; i < waveCount; i++) {
               spawnProjectile((Math.PI * 2 / waveCount) * i, {
                 behavior: 'shockwave',
-                damageMultiplier: damageMultiplier * 0.62,
+                damageMultiplier: damageMultiplier * patternProfile.damageScale,
                 speedMultiplier: 0.95,
                 radius: 18,
                 lifeTime: 1600
               });
             }
           } else if (behavior === 'nova') {
-            const waveCount = 14 + levelBonus.projectileBonus * 2;
+            const waveCount = patternProfile.count;
             for (let i = 0; i < waveCount; i++) {
               spawnProjectile((Math.PI * 2 / waveCount) * i, {
                 behavior: 'nova',
-                damageMultiplier: damageMultiplier * 0.8,
+                damageMultiplier: damageMultiplier * patternProfile.damageScale,
                 speedMultiplier: 0.9,
                 radius: 24,
                 lifeTime: 2200
               });
             }
           } else if (behavior === 'mine') {
-            const mineCount = (weapon.id >= 22 ? 3 : 1) + levelBonus.projectileBonus;
+            const mineCount = patternProfile.count;
             for (let i = 0; i < mineCount; i++) {
               const angle = (Math.PI * 2 / mineCount) * i + Math.random() * 0.4;
               const distance = 35 + Math.random() * 45;
@@ -744,31 +792,31 @@ export class Player {
                 this,
                 {
                   behavior: 'mine',
-                  damageMultiplier: damageMultiplier * 0.85,
+                  damageMultiplier: damageMultiplier * patternProfile.damageScale,
                   lifeTime: weapon.id >= 22 ? 9000 : 6500,
                   radius: weapon.id >= 22 ? 24 : 18
                 }
               ));
             }
           } else if (behavior === 'orbit') {
-            const orbitCount = (weapon.id >= 16 ? 3 : 1) + levelBonus.projectileBonus;
+            const orbitCount = patternProfile.count;
             for (let i = 0; i < orbitCount; i++) {
               spawnProjectile(0, {
                 orbitIndex: i,
                 orbitAngle: (Math.PI * 2 / orbitCount) * i,
-                damageMultiplier: damageMultiplier * 0.7,
+                damageMultiplier: damageMultiplier * patternProfile.damageScale,
                 lifeTime: 3600
               });
             }
           } else {
-            const throwCount = (behavior === 'throw_fire' && weapon.id >= 22 ? 3 : 1) + (behavior === 'throw_fire' ? levelBonus.projectileBonus : 0);
+            const throwCount = patternProfile.count;
             for (let i = 0; i < throwCount; i++) {
               const centeredIndex = i - (throwCount - 1) / 2;
               spawnProjectile(centeredIndex * 0.34, behavior === 'throw_fire' ? {
                 speedMultiplier: 0.85,
                 lifeTime: weapon.id >= 22 ? 5600 : 5000,
                 radius: weapon.id >= 22 ? 18 : 14,
-                damageMultiplier: damageMultiplier * (weapon.id >= 22 ? 0.95 : 1)
+                damageMultiplier: damageMultiplier * patternProfile.damageScale
               } : {});
             }
           }

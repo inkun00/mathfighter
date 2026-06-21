@@ -145,6 +145,56 @@ test('fire patches tick against monsters and an unshielded boss', () => {
   assert.equal(boss.damageTaken[0], 24);
 });
 
+test('chains Tesla damage through nearby monsters with falloff', () => {
+  const primary = createTarget({ x: 0, hp: 100 });
+  const near = createTarget({ x: 100, hp: 100 });
+  const second = createTarget({ x: 190, hp: 100 });
+  const outside = createTarget({ x: 240, hp: 100 });
+  const projectile = createProjectile({
+    id: 23,
+    behavior: 'chain_lightning',
+    splashRadius: 0
+  });
+
+  resolve({ projectile, monsters: [primary, near, second, outside] });
+
+  assert.equal(primary.damageTaken[0], 10);
+  assert.equal(near.damageTaken[0], 7.199999999999999);
+  assert.equal(second.damageTaken[0], 6.4);
+  assert.equal(outside.damageTaken.length, 0);
+});
+
+test('ticks gravity-well damage against monsters and bosses', () => {
+  const monster = createTarget({ x: 20, hp: 100 });
+  const boss = createTarget({ x: 20, hp: 100, stage: 20, isGimmickActive: false });
+  const projectile = createProjectile({
+    id: 25,
+    behavior: 'gravity_well',
+    dmg: 100,
+    splashRadius: 80,
+    canApplyAreaTick: now => now === 1000
+  });
+
+  resolve({ projectile, monsters: [monster], boss });
+
+  assert.equal(monster.damageTaken[0], 22);
+  assert.equal(boss.damageTaken[0], 16);
+});
+
+test('boosts plasma rail damage over the standard laser', () => {
+  const monster = createTarget({ x: 50, y: 0, radius: 5 });
+  const projectile = createProjectile({
+    id: 24,
+    behavior: 'plasma_rail',
+    radius: 1,
+    maxRange: 100
+  });
+
+  resolve({ projectile, monsters: [monster] });
+
+  assert.equal(monster.damageTaken[0], 12.5);
+});
+
 test('updates player projectiles with monsters and the player position', () => {
   const monsters = [{ hp: 10 }];
   const calls = [];

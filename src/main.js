@@ -45,6 +45,12 @@ import {
   getNextStageTransition,
   getPlayerDeathTransition
 } from './runProgress.js';
+import {
+  getWeaponBalanceMetrics,
+  getWeaponFireStyleLabel as getProfileFireStyleLabel,
+  getWeaponRangeLabel as getProfileRangeLabel,
+  getWeaponVisualProfile
+} from './weaponProfiles.js';
 
 // Game variables
 let canvas, ctx;
@@ -963,28 +969,15 @@ function applyEnhancedLevelUpChoice(choice) {
 }
 
 function getWeaponFireStyleLabel(id, type) {
-  if (id === 13) return '\uD654\uBA74 \uAD00\uD1B5 \uB808\uC774\uC800';
-  if ([4, 20].includes(id)) return '왕복형';
-  if ([6, 17, 22].includes(id)) return '투척 화염형';
-  if (id === 8) return '부채꼴 폭발형';
-  if ([3, 12, 19, 27, 28, 30].includes(id)) return '다중 발사형';
-  if (id === 14) return '지뢰 설치형';
-  if (id === 16) return '회전 궤도형';
-  if ([5, 7, 13, 24, 26, 29].includes(id) || type === 'pierce') return '관통형';
-  if ([2, 9, 15, 23, 25].includes(id) || type === 'homing') return '유도형';
-  if ([8, 11, 21].includes(id) || type === 'splash') return '충돌 폭발형';
-  return '직선 발사형';
+  return getProfileFireStyleLabel(id, type);
 }
 
 function getWeaponRangeLabel(id, type) {
-  if (id === 13) return '\uD654\uBA74 \uB05D';
-  if ([6, 8, 11, 14, 17, 21, 22, 29, 30].includes(id) || type === 'splash') return '짧음';
-  if ([3, 12, 16, 19, 27, 28].includes(id)) return '중간';
-  return '김';
+  return getProfileRangeLabel(id, type);
 }
 
 function getWeaponDps(weapon) {
-  return Math.round((getWeaponDisplayDamage(weapon) * 1000) / Math.max(1, weapon.cooldown));
+  return getWeaponBalanceMetrics(weapon, getWeaponLevel(weapon.id)).focusDps;
 }
 
 function getWeaponDisplayDamage(weapon) {
@@ -1173,10 +1166,11 @@ function openShopScreen() {
         <div class="weapon-upgrade-effect">${isWeaponMax ? '최대 강화 완료' : getWeaponUpgradeEffectText(w, upgradeSummary)}</div>
       `);
     }
+    const balanceMetrics = getWeaponBalanceMetrics(w, weaponLevel);
     card.querySelector('.price').textContent = isEquipped
       ? `장착 슬롯 ${equippedWeaponIds.indexOf(w.id) + 1}/3`
-      : `피해량 ${w.dmg}`;
-    card.querySelector('.card-desc').textContent = `${w.desc} 발사 방식: ${getWeaponFireStyleLabel(w.id, w.type)} / 사정거리: ${getWeaponRangeLabel(w.id, w.type)}`;
+      : `피해 ${getWeaponDisplayDamage(w)} · DPS ${balanceMetrics.focusDps}`;
+    card.querySelector('.card-desc').textContent = `${w.desc} 발사 방식: ${getWeaponFireStyleLabel(w.id, w.type)} / 사정거리: ${getWeaponRangeLabel(w.id, w.type)} / 광역 잠재력: ${balanceMetrics.areaDps}`;
     card.insertAdjacentHTML('beforeend', `<div class="change-row"><span>${getWeaponChangeText(w, isOwned, isEquipped, equippedWeaponIds)}</span></div>`);
 
     weaponList.appendChild(card);
@@ -1516,11 +1510,12 @@ function spawnTextParticle(x, y, text, color) {
 
 function spawnHitEffect(x, y, projectile, scale = 1) {
   if (!projectile) return;
-  const tier = projectile.id >= 21 ? 3 : projectile.id >= 11 ? 2 : 1;
-  const isAreaHit = projectile.splashRadius > 0 || ['explosive', 'mine', 'throw_fire', 'fire_patch'].includes(projectile.behavior);
-  const color = tier === 3 ? '#ffcc00' : tier === 2 ? '#ff3df2' : '#00ffff';
-  const sparkCount = Math.round((tier === 3 ? 18 : tier === 2 ? 12 : 6) * scale);
-  const radius = (tier === 3 ? 62 : tier === 2 ? 42 : 24) * (isAreaHit ? 1.25 : 1) * scale;
+  const visual = getWeaponVisualProfile(projectile.id);
+  const tier = visual.rank;
+  const isAreaHit = projectile.splashRadius > 0 || ['explosive', 'mine', 'throw_fire', 'fire_patch', 'gravity_well', 'nova'].includes(projectile.behavior);
+  const color = visual.color;
+  const sparkCount = Math.round((4 + tier * 3) * visual.impactScale * scale);
+  const radius = visual.drawSize * (isAreaHit ? 1.65 : 1.15) * visual.impactScale * scale;
 
   hitEffects.push({
     x,
@@ -1531,7 +1526,7 @@ function spawnHitEffect(x, y, projectile, scale = 1) {
     tier,
     isAreaHit,
     createdTime: Date.now(),
-    lifeTime: tier === 3 ? 520 : tier === 2 ? 420 : 260,
+    lifeTime: visual.lifeTime,
     angleSeed: Math.random() * Math.PI * 2
   });
 
@@ -1550,7 +1545,7 @@ function drawHitEffects() {
     ctx.translate(effect.x, effect.y);
 
     ctx.strokeStyle = effect.color;
-    ctx.lineWidth = Math.max(2, effect.tier * 1.6);
+    ctx.lineWidth = Math.max(2, 1 + effect.tier * 0.9);
     ctx.shadowColor = effect.color;
     ctx.shadowBlur = effect.tier >= 2 ? 16 : 8;
     ctx.beginPath();
@@ -1570,18 +1565,19 @@ function drawHitEffects() {
     for (let i = 0; i < effect.sparkCount; i++) {
       const angle = effect.angleSeed + (Math.PI * 2 * i) / effect.sparkCount;
       const distance = effect.radius * (0.25 + progress * (0.65 + (i % 3) * 0.12));
-      const size = effect.tier + 1 + (i % 2);
+      const size = 1.5 + effect.tier * 0.55 + (i % 2);
       ctx.beginPath();
       ctx.arc(Math.cos(angle) * distance, Math.sin(angle) * distance, size, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    if (effect.tier === 3) {
+    if (effect.tier >= 3) {
       ctx.globalAlpha = alpha * 0.9;
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
-      for (let i = 0; i < 4; i++) {
-        const angle = effect.angleSeed + i * (Math.PI / 2);
+      const rayCount = Math.min(8, effect.tier + 1);
+      for (let i = 0; i < rayCount; i++) {
+        const angle = effect.angleSeed + i * (Math.PI * 2 / rayCount);
         ctx.beginPath();
         ctx.moveTo(Math.cos(angle) * ringRadius * 0.2, Math.sin(angle) * ringRadius * 0.2);
         ctx.lineTo(Math.cos(angle) * ringRadius * 1.2, Math.sin(angle) * ringRadius * 1.2);
