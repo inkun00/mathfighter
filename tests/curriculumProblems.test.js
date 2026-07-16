@@ -15,6 +15,7 @@ import { GRADE_FOUR_SEMESTER_ONE_BRAIN_QUESTION_BANK } from '../src/grade4Semest
 import { GRADE_FIVE_SEMESTER_ONE_QUESTION_BANK } from '../src/grade5Semester1QuestionBank.js';
 import { GRADE_FIVE_SEMESTER_ONE_BRAIN_QUESTION_BANK } from '../src/grade5Semester1BrainQuestionBank.js';
 import { GRADE_SIX_SEMESTER_ONE_QUESTION_BANK } from '../src/grade6Semester1QuestionBank.js';
+import { GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK } from '../src/grade6Semester1BrainQuestionBank.js';
 
 test('creates solvable game-ready problems for the grade 4 semester 1 curriculum', () => {
   const player = applyCurriculumToPlayer({}, '4-1');
@@ -257,6 +258,33 @@ test('restores unused grade 5 brain-training questions', () => {
   const remaining = Array.from({ length: 19 }, () => generateCurriculumBrainTrainingQuestions()).flat();
   assert.equal(new Set(remaining.map(question => question.bankQuestionId)).size, 57);
   assert.ok(remaining.every(question => !consumed.includes(question.bankQuestionId)));
+});
+
+test('builds grade 6 brain training from numeric questions in the uploaded bank', () => {
+  assert.equal(GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK.length, 67);
+  assert.equal(new Set(GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK.map(question => question.id)).size, 67);
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 6].map(area => (
+      GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK.filter(question => question.area === area).length
+    )),
+    [7, 6, 18, 12, 8, 16]
+  );
+  assert.ok(GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK.every(question => /^\d+(?:\.\d+)?$/.test(question.answer)));
+  assert.ok(GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK.every(question => (
+    GRADE_SIX_SEMESTER_ONE_QUESTION_BANK.some(source => source.id === question.sourceQuestionId)
+  )));
+});
+
+test('uses grade 6 brain questions without repeating the first 66 questions', () => {
+  applyCurriculumToPlayer({}, '6-2');
+  applyCurriculumToPlayer({}, '6-1');
+  const sessions = Array.from({ length: 22 }, () => generateCurriculumBrainTrainingQuestions());
+  const cycle = sessions.flat();
+
+  assert.equal(new Set(cycle.map(question => question.bankQuestionId)).size, 66);
+  assert.ok(sessions.every(questions => new Set(questions.map(question => question.area)).size === 3));
+  assert.ok(cycle.every(question => /^\d+(?:\.\d+)?$/.test(question.answer) && question.options.length === 0));
+  assert.ok(cycle.every(question => question.allowDecimal));
 });
 
 test('creates grade 4 semester 1 review questions from recorded weak units', () => {

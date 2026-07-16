@@ -487,6 +487,37 @@ test('uses numeric subjective grade 5 semester 1 bank questions for brain traini
   expect(bankResult).toEqual({ allFromBank: true, remaining: 57 });
 });
 
+test('uses numeric subjective grade 6 semester 1 bank questions for brain training', async ({ page }) => {
+  const session = createShopSession(1);
+  session.player.grade = 6;
+  session.player.curriculum = '6-1';
+  await seedSession(page, session);
+  await page.goto('/');
+
+  await page.locator('#brainTrainingBtn').click();
+
+  await expect(page.locator('#brainTrainingModal')).toBeVisible();
+  await expect(page.locator('#brainTrainingQuestionList .exam-item')).toHaveCount(3);
+  await expect(page.locator('#brainTrainingQuestionList input[type="number"]')).toHaveCount(3);
+  await expect(page.locator('#brainTrainingQuestionList input[type="radio"]')).toHaveCount(0);
+  await expect(page.locator('#brainTrainingQuestionList input[type="number"]').first()).toHaveAttribute('step', 'any');
+
+  const result = await page.evaluate(async () => {
+    const { GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK } = await import('/src/grade6Semester1BrainQuestionBank.js');
+    const { getCurriculumGameQuestionBankState } = await import('/src/curriculumProblems.js');
+    const displayedTexts = [...document.querySelectorAll('#brainTrainingQuestionList .exam-q')]
+      .map(element => element.textContent.replace(/^Q\d+\.\s*/, '').trim());
+    return {
+      allFromBank: displayedTexts.every(text => (
+        GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK.some(question => question.text === text)
+      )),
+      remaining: getCurriculumGameQuestionBankState().remainingBrainQuestionIds.length
+    };
+  });
+
+  expect(result).toEqual({ allFromBank: true, remaining: 64 });
+});
+
 test('uses grade 4 semester 1 content for the weakness review exam', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(async () => {

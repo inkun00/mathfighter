@@ -3,6 +3,7 @@ import { GRADE_FOUR_SEMESTER_ONE_BRAIN_QUESTION_BANK } from './grade4Semester1Br
 import { GRADE_FIVE_SEMESTER_ONE_QUESTION_BANK } from './grade5Semester1QuestionBank.js';
 import { GRADE_FIVE_SEMESTER_ONE_BRAIN_QUESTION_BANK } from './grade5Semester1BrainQuestionBank.js';
 import { GRADE_SIX_SEMESTER_ONE_QUESTION_BANK } from './grade6Semester1QuestionBank.js';
+import { GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK } from './grade6Semester1BrainQuestionBank.js';
 
 const SUPPORTED_CURRICULA = new Set(['4-1', '4-2', '5-1', '5-2', '6-1', '6-2']);
 const GAME_QUESTION_BANKS = new Map([
@@ -15,7 +16,8 @@ const QUESTION_BANK_BY_ID = new Map(
 );
 const BRAIN_QUESTION_BANKS = new Map([
   ['4-1', GRADE_FOUR_SEMESTER_ONE_BRAIN_QUESTION_BANK.map(question => ({ ...question, curriculum: '4-1' }))],
-  ['5-1', GRADE_FIVE_SEMESTER_ONE_BRAIN_QUESTION_BANK]
+  ['5-1', GRADE_FIVE_SEMESTER_ONE_BRAIN_QUESTION_BANK],
+  ['6-1', GRADE_SIX_SEMESTER_ONE_BRAIN_QUESTION_BANK]
 ]);
 const BRAIN_QUESTION_BANK_BY_ID = new Map(
   [...BRAIN_QUESTION_BANKS.values()].flat().map(question => [question.id, question])

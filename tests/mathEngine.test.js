@@ -80,6 +80,23 @@ test('prioritizes grade 5 semester 1 brain-training bank over custom quiz data',
   applyCurriculumToPlayer({}, '6-1');
 });
 
+test('prioritizes grade 6 semester 1 brain-training bank over custom quiz data', () => {
+  applyCurriculumToPlayer({}, '6-1');
+  setCustomQuizData([
+    { name: '임의 문제 1', items: ['10', '20'] },
+    { name: '임의 문제 2', items: ['30', '40'] },
+    { name: '임의 문제 3', items: ['50', '60'] }
+  ]);
+
+  const questions = generateBrainTrainingQuestions(1);
+  assert.equal(questions.length, 3);
+  assert.ok(questions.every(question => question.bankQuestionId.startsWith('brain-g6s1-')));
+  assert.ok(questions.every(question => /^\d+(?:\.\d+)?$/.test(question.answer)));
+
+  setCustomQuizData(null);
+  applyCurriculumToPlayer({}, '5-1');
+});
+
 test('uses a 25:75 correct-to-wrong drop ratio for every problem type', () => {
   assert.equal(getCorrectDropChance({ type: 'curriculum_choice' }), 0.25);
   assert.equal(getCorrectDropChance({ type: 'custom_text' }), 0.25);
