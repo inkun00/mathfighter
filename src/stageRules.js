@@ -1,6 +1,6 @@
 export const FINAL_STAGE = 50;
 export const BOSS_STAGE_INTERVAL = 10;
-export const REGULAR_STAGE_DURATION = 90;
+export const REGULAR_STAGE_DURATION = 70;
 export const PROBLEM_DURATION = 30;
 
 export function isBossStage(stage) {

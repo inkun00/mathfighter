@@ -16,6 +16,7 @@ import {
 } from '../src/stageRules.js';
 
 test('identifies boss stages and assigns stage timers', () => {
+  assert.equal(REGULAR_STAGE_DURATION, 70);
   assert.equal(isBossStage(9), false);
   assert.equal(isBossStage(10), true);
   assert.equal(isBossStage(50), true);

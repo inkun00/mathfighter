@@ -143,11 +143,15 @@ function applyChainLightning(projectile, primary, monsters, onMonsterDefeat, onH
     .sort((a, b) => distanceBetween(primary, a) - distanceBetween(primary, b))
     .slice(0, 5);
 
+  let chainOrigin = primary;
   chainedTargets.forEach((monster, index) => {
     projectile.hitTargets?.add(monster);
     applyProjectileImpact(monster, projectile, Math.max(0.38, 0.72 - index * 0.08));
-    onHitEffect(monster.x, monster.y, projectile, 0.8 - index * 0.08);
+    onHitEffect(monster.x, monster.y, projectile, 0.8 - index * 0.08, {
+      origin: { x: chainOrigin.x, y: chainOrigin.y }
+    });
     defeatMonsterIfNeeded(monster, onMonsterDefeat);
+    chainOrigin = monster;
   });
 }
 

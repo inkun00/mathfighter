@@ -4,7 +4,7 @@ import { getWrongAreas, addGold, clearWrongAreas } from './shop.js';
 let currentQuestions = [];
 let brainTrainingQuestions = [];
 
-function renderQuestionList(listContainer, questions, inputPrefix = 'question') {
+function renderQuestionList(listContainer, questions, inputPrefix = 'question', numericOnly = false) {
   listContainer.innerHTML = '';
 
   questions.forEach((q, idx) => {
@@ -16,7 +16,7 @@ function renderQuestionList(listContainer, questions, inputPrefix = 'question') 
     title.innerText = `Q${idx + 1}. ${q.text}`;
     qDiv.appendChild(title);
 
-    if (q.options && q.options.length > 0) {
+    if (!numericOnly && q.options && q.options.length > 0) {
       const optionsContainer = document.createElement('div');
       optionsContainer.className = 'exam-options';
 
@@ -36,10 +36,22 @@ function renderQuestionList(listContainer, questions, inputPrefix = 'question') 
       qDiv.appendChild(optionsContainer);
     } else {
       const input = document.createElement('input');
-      input.type = isCustomMode() ? 'text' : 'number';
+      input.type = numericOnly || !isCustomMode() ? 'number' : 'text';
       input.className = 'exam-input-text';
       input.name = `${inputPrefix}-${q.id}`;
-      input.placeholder = '답 입력';
+      input.placeholder = numericOnly ? '숫자 입력' : '답 입력';
+      if (numericOnly) {
+        const allowDecimal = Boolean(q.allowDecimal);
+        input.inputMode = allowDecimal ? 'decimal' : 'numeric';
+        input.min = '0';
+        input.step = allowDecimal ? 'any' : '1';
+        input.autocomplete = 'off';
+        input.setAttribute('aria-label', `${idx + 1}번 문제 숫자 답`);
+        input.addEventListener('keydown', event => {
+          const blockedKeys = allowDecimal ? ['e', 'E', '+', '-'] : ['e', 'E', '+', '-', '.'];
+          if (blockedKeys.includes(event.key)) event.preventDefault();
+        });
+      }
       qDiv.appendChild(input);
     }
 
@@ -145,11 +157,17 @@ export function openBrainTrainingModal(stage, onCloseCallback) {
   const desc = document.getElementById('brainTrainingDesc');
   const perfectBonusGold = Math.max(1, stage) * 1000;
   if (desc) {
-    desc.textContent = `대기실에서 도전하는 추가 주관식 문제입니다. 한 문제당 300골드, 3문제를 모두 맞히면 총 ${perfectBonusGold.toLocaleString()}골드를 획득합니다.`;
+    desc.textContent = `대기실에서 도전하는 추가 문제입니다. 한 문제당 300골드, 3문제를 모두 맞히면 총 ${perfectBonusGold.toLocaleString()}골드를 획득합니다.`;
   }
 
   brainTrainingQuestions = generateBrainTrainingQuestions(stage);
-  renderQuestionList(listContainer, brainTrainingQuestions, 'brain-question');
+  renderQuestionList(listContainer, brainTrainingQuestions, 'brain-question', true);
+  listContainer.onkeydown = event => {
+    if (event.key === 'Enter' && event.target.matches('input[type="number"]')) {
+      event.preventDefault();
+      submitBtn.click();
+    }
+  };
 
   submitBtn.onclick = () => {
     evaluateBrainTraining(stage, onCloseCallback);
@@ -166,22 +184,11 @@ function evaluateBrainTraining(stage, onCloseCallback) {
 
   brainTrainingQuestions.forEach(q => {
     const userAns = getQuestionAnswer(q, 'brain-question');
-    if (isCustomMode()) {
-      const cleanUser = userAns.replace(/\s+/g, '').toLowerCase();
-      const answers = q.answers || [q.answer];
-      const isCorrect = answers.some(ans => {
-        const cleanAns = ans.replace(/\s+/g, '').toLowerCase();
-        return cleanUser !== '' && cleanUser === cleanAns;
-      });
-      if (isCorrect) {
-        correctCount++;
-      }
-    } else {
-      const cleanUser = userAns.replace(/[^0-9-]/g, '');
-      const cleanAns = q.answer.replace(/[^0-9-]/g, '');
-      if (cleanUser !== '' && parseInt(cleanUser, 10) === parseInt(cleanAns, 10)) {
-        correctCount++;
-      }
+    const numericUserAnswer = Number(userAns);
+    const answers = q.answers || [q.answer];
+    const isCorrect = userAns !== '' && answers.some(answer => Number(answer) === numericUserAnswer);
+    if (isCorrect) {
+      correctCount++;
     }
   });
 

@@ -3,10 +3,8 @@ import { spawnMonster, restoreMonster } from './monster.js';
 import { Boss } from './boss.js';
 import { generateProblem, isCustomMode, setCustomQuizData, getCustomQuizData } from './mathEngine.js';
 import {
-  loadState, resetState, getGold, addGold, 
-  getEquippedWeapons, WEAPONS_DB, UPGRADES_DB, 
-  getUpgradeCost, getUpgradeLevel, purchaseUpgrade, purchaseWeapon, getOwnedWeapons, equipWeapon,
-  recordWrongArea, getStatValue, getWeaponLevel, getWeaponUpgradeCost, getWeaponUpgradeSummary, upgradeWeapon
+  loadState, resetState, getGold, addGold,
+  getEquippedWeapons, equipWeapon, recordWrongArea
 } from './shop.js';
 import { openBrainTrainingModal, openExamModal } from './exam.js';
 import { showCertificate, saveCertificate } from './certificate.js';
@@ -22,7 +20,6 @@ import {
   PROBLEM_DURATION,
   REGULAR_STAGE_DURATION,
   getFinalStage,
-  getStageClearLabel,
   getStageTimers,
   isBossStage
 } from './stageRules.js';
@@ -46,18 +43,24 @@ import {
   getPlayerDeathTransition
 } from './runProgress.js';
 import {
-  getWeaponBalanceMetrics,
-  getWeaponFireStyleLabel as getProfileFireStyleLabel,
-  getWeaponRangeLabel as getProfileRangeLabel,
-  getWeaponVisualProfile
-} from './weaponProfiles.js';
+  createGameUi,
+  isVisibleGameplayScreen
+} from './gameUi.js';
+import { createGameRenderer } from './gameRenderer.js';
+import { createCameraController } from './cameraController.js';
+import {
+  applyCurriculumToPlayer,
+  getCurriculumGameQuestionBankState,
+  resetCurriculumGameQuestionBank,
+  restoreCurriculumGameQuestionBankState,
+  restorePlayerCurriculum
+} from './curriculumProblems.js';
+import { recordProblemAttempt } from './learningReport.js';
 
-// Game variables
 let canvas, ctx;
 let gameState = 'start'; // 'start', 'play', 'pause', 'levelUp', 'shop', 'exam', 'cert'
 let currentStage = 1;
 let selectedGender = 'male'; // 'male' or 'female' character skin
-const ARENA_SCALE = 2;
 let worldWidth = 0;
 let worldHeight = 0;
 
@@ -66,7 +69,6 @@ let monsters = [];
 let projectiles = [];
 let monsterProjectiles = [];
 let dropItems = [];
-let hitEffects = [];
 let boss = null;
 let isDeathHandled = false;
 let usedReviewRevive = false;
@@ -75,7 +77,6 @@ let brainTrainingCompletedStages = new Set();
 let lastSpawnTime = 0;
 let lastSecTime = 0;
 let lastSessionSaveTime = 0;
-let cameraOffset = { x: 0, y: 0, initialized: false };
 
 let currentProblem = null;
 let problemProgress = 0;
@@ -85,21 +86,9 @@ let problemSerial = 0;
 let stageClearTimer = 0;
 let bossDeathPos = null;
 
-const STAGE_BACKGROUNDS = [
-  { minStage: 40, src: '/assets/backgrounds/stage_40_cosmic.png' },
-  { minStage: 30, src: '/assets/backgrounds/stage_30_forge.png' },
-  { minStage: 20, src: '/assets/backgrounds/stage_20_ruins.png' },
-  { minStage: 10, src: '/assets/backgrounds/stage_10_cavern.png' },
-  { minStage: 1, src: '/assets/backgrounds/stage_01_academy.png' }
-].map(background => {
-  const image = new Image();
-  image.src = background.src;
-  return { ...background, image, pattern: null };
-});
-
-// Evaluation performance stats (indexed by math area 1~5)
-let correctAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-let totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+let correctAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+let totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+let wrongQuestionStats = {};
 let combo = 0;
 const inputController = createInputController({
   getGameState: () => gameState,
@@ -112,6 +101,11 @@ function createStageProblem(stage) {
   const problem = generateProblem(stage);
   problem.id = `stage-${stage}-${++problemSerial}`;
   return problem;
+}
+
+function createRunPlayer(name) {
+  return applyCurriculumToPlayer(new Player(worldWidth / 2, worldHeight / 2, name, selectedGender),
+    document.getElementById('playerGradeSelect').value);
 }
 
 function removeStaleNumberDrops() {
@@ -131,46 +125,6 @@ function handleMonsterDefeat(monster, activeProblem, showBonusText = true) {
   }
 
   monster.dropLoot(activeProblem, dropItems);
-}
-
-function isMobileBrowserViewport() {
-  return window.matchMedia?.('(pointer: coarse)').matches || window.innerWidth <= 760;
-}
-
-function getStageBackground(stage) {
-  return STAGE_BACKGROUNDS.find(background => stage >= background.minStage) || STAGE_BACKGROUNDS[STAGE_BACKGROUNDS.length - 1];
-}
-
-function drawStageBackground(camera) {
-  ctx.fillStyle = '#080312';
-  ctx.fillRect(0, 0, worldWidth, worldHeight);
-
-  const background = getStageBackground(currentStage);
-  if (!background?.image?.complete || background.image.naturalWidth === 0) return;
-
-  if (!background.pattern) {
-    background.pattern = ctx.createPattern(background.image, 'repeat');
-  }
-  if (!background.pattern) return;
-
-  ctx.save();
-  ctx.globalAlpha = 0.72;
-  ctx.fillStyle = background.pattern;
-  ctx.fillRect(0, 0, worldWidth, worldHeight);
-
-  const gradient = ctx.createRadialGradient(
-    camera.x + canvas.width / 2,
-    camera.y + canvas.height / 2,
-    Math.min(canvas.width, canvas.height) * 0.25,
-    camera.x + canvas.width / 2,
-    camera.y + canvas.height / 2,
-    Math.max(canvas.width, canvas.height) * 0.9
-  );
-  gradient.addColorStop(0, 'rgba(8, 3, 18, 0.04)');
-  gradient.addColorStop(1, 'rgba(2, 0, 8, 0.45)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(camera.x, camera.y, canvas.width, canvas.height);
-  ctx.restore();
 }
 
 function initGameApp() {
@@ -198,14 +152,6 @@ function initGameApp() {
   requestAnimationFrame(gameLoop);
 }
 
-// Init setup on window load. If the module is evaluated after DOMContentLoaded,
-// run immediately so start-screen controls are always bound.
-if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', initGameApp);
-} else {
-  initGameApp();
-}
-
 function saveSessionSnapshot() {
   if (!player || gameState === 'start' || gameState === 'cert') {
     clearActiveSession();
@@ -222,6 +168,8 @@ function saveSessionSnapshot() {
     brainTrainingCompletedStages: [...brainTrainingCompletedStages],
     correctAnswers,
     totalAnswers,
+    wrongQuestionStats,
+    curriculumQuestionBankState: getCurriculumGameQuestionBankState(),
     combo,
     customQuizData: getCustomQuizData(),
     currentProblem,
@@ -246,6 +194,7 @@ function restoreSessionIfNeeded() {
     brainTrainingCompletedStages = new Set(Array.isArray(saved.brainTrainingCompletedStages) ? saved.brainTrainingCompletedStages : []);
     correctAnswers = saved.correctAnswers || correctAnswers;
     totalAnswers = saved.totalAnswers || totalAnswers;
+    wrongQuestionStats = saved.wrongQuestionStats || {};
     combo = saved.combo || 0;
 
     if (saved.customQuizData) {
@@ -253,6 +202,7 @@ function restoreSessionIfNeeded() {
     }
 
     player = new Player(worldWidth / 2, worldHeight / 2, saved.player.name || 'Player', selectedGender);
+    restorePlayerCurriculum(player, saved.player, document.getElementById('playerGradeSelect'));
     player.level = saved.player.level || 1;
     player.exp = saved.player.exp || 0;
     player.nextLevelExp = saved.player.nextLevelExp || 100;
@@ -267,9 +217,11 @@ function restoreSessionIfNeeded() {
     player.hp = Math.floor(Math.max(1, Math.min(player.maxHp, saved.player.hp || player.maxHp)));
 
     if (saved.gameState === 'shop') {
+      restoreCurriculumGameQuestionBankState(saved.curriculumQuestionBankState);
       openShopScreen();
     } else {
       loadStage(currentStage);
+      restoreCurriculumGameQuestionBankState(saved.curriculumQuestionBankState);
       
       if (saved.currentProblem) {
         currentProblem = saved.currentProblem;
@@ -294,6 +246,8 @@ function restoreSessionIfNeeded() {
             currentProblem.checkAnswer = (num) => num === targetNum;
           } else if (type === 'lcm') {
             currentProblem.checkAnswer = (num) => num === targetNum;
+          } else if (type === 'curriculum_choice') {
+            currentProblem.checkAnswer = value => currentProblem.options.includes(value);
           }
         }
       }
@@ -327,40 +281,6 @@ function restoreSessionIfNeeded() {
   }
 }
 
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  worldWidth = canvas.width * ARENA_SCALE;
-  worldHeight = canvas.height * ARENA_SCALE;
-  cameraOffset.initialized = false;
-}
-
-function getTargetCameraOffset() {
-  if (!player) return { x: 0, y: 0 };
-
-  return {
-    x: Math.max(0, Math.min(worldWidth - canvas.width, player.x - canvas.width / 2)),
-    y: Math.max(0, Math.min(worldHeight - canvas.height, player.y - canvas.height / 2))
-  };
-}
-
-function getCameraOffset() {
-  const target = getTargetCameraOffset();
-  if (!cameraOffset.initialized) {
-    cameraOffset = { ...target, initialized: true };
-    return target;
-  }
-
-  const smoothing = isMobileBrowserViewport() ? 0.12 : 1;
-  cameraOffset.x += (target.x - cameraOffset.x) * smoothing;
-  cameraOffset.y += (target.y - cameraOffset.y) * smoothing;
-
-  return {
-    x: Math.max(0, Math.min(worldWidth - canvas.width, cameraOffset.x)),
-    y: Math.max(0, Math.min(worldHeight - canvas.height, cameraOffset.y))
-  };
-}
-
 function hideStartScreen() {
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('startScreen').classList.remove('active');
@@ -372,99 +292,77 @@ function blurActiveControl() {
   }
 }
 
-function resetCameraOffset() {
-  cameraOffset = { x: 0, y: 0, initialized: false };
-}
-
-function isVisibleGameplayScreen() {
-  const gameContainer = document.getElementById('gameContainer');
-  const levelUpModal = document.getElementById('levelUpModal');
-  const pauseModal = document.getElementById('pauseModal');
-  return Boolean(
-    player &&
-    currentProblem &&
-    gameContainer &&
-    !gameContainer.classList.contains('hidden') &&
-    (!levelUpModal || levelUpModal.classList.contains('hidden')) &&
-    (!pauseModal || pauseModal.classList.contains('hidden'))
-  );
-}
-
-function renderPauseLounge() {
-  if (!player) return;
-
-  // 1. Stats Rendering
-  const stats = getCurrentStatSummary();
-  const statsContainer = document.getElementById('pausePlayerStats');
-  if (statsContainer) {
-    statsContainer.innerHTML = `
-      <div class="status-row"><span>최대 HP</span><strong>${stats.maxHp}</strong></div>
-      <div class="status-row"><span>방어력</span><strong>${stats.defense}</strong></div>
-      <div class="status-row"><span>공격 보너스</span><strong>+${stats.attackBonus}%</strong></div>
-      <div class="status-row"><span>연사 보너스</span><strong>+${stats.fireRate}%</strong></div>
-      <div class="status-row"><span>자석 범위</span><strong>${stats.magnet}</strong></div>
-      <div class="status-row"><span>골드 보너스</span><strong>+${stats.goldBonus}%</strong></div>
-      <div class="status-row"><span>무기 총 피해</span><strong>${stats.weaponDamage}</strong></div>
-      <div class="status-row"><span>초당 화력</span><strong>${stats.weaponDps}</strong></div>
-    `;
+const {
+  getCameraOffset,
+  isMobileBrowserViewport,
+  resetCameraOffset,
+  resizeCanvas
+} = createCameraController({
+  getCanvas: () => canvas,
+  getPlayer: () => player,
+  getWorldSize: () => ({ worldWidth, worldHeight }),
+  setWorldSize: (width, height) => {
+    worldWidth = width;
+    worldHeight = height;
   }
+});
 
-  // 2. Weapon Change Rendering
-  const weaponList = document.getElementById('pauseWeaponList');
-  if (weaponList) {
-    weaponList.innerHTML = "";
-    const ownedWeapons = getOwnedWeapons();
-    const equippedWeapons = getEquippedWeapons();
-    const equippedWeaponIds = equippedWeapons.map(w => w.id);
+const {
+  draw,
+  resetEffects,
+  spawnFireEffect,
+  spawnHitEffect,
+  spawnTextParticle
+} = createGameRenderer({
+  getCameraOffset,
+  getState: () => ({
+    canvas,
+    ctx,
+    worldWidth,
+    worldHeight,
+    currentStage,
+    gameState,
+    player,
+    monsters,
+    projectiles,
+    monsterProjectiles,
+    dropItems,
+    boss
+  })
+});
 
-    WEAPONS_DB.forEach(w => {
-      // Only show owned weapons in the pause screen
-      if (!ownedWeapons.includes(w.id)) return;
+const {
+  openShopScreen,
+  renderPauseLounge,
+  triggerLevelUpEnhanced,
+  updateHUD
+} = createGameUi({
+  getState: () => ({
+    player,
+    currentProblem: createBossGimmickProblem(boss, currentProblem, player?.curriculum),
+    boss,
+    stageTimer,
+    problemProgress,
+    combo,
+    currentStage,
+    brainTrainingCompletedStages
+  }),
+  setGameState: nextState => {
+    gameState = nextState;
+  },
+  blurActiveControl,
+  hidePauseMenu,
+  hideStartScreen,
+  saveSessionSnapshot
+});
 
-      const isEquipped = equippedWeaponIds.includes(w.id);
-      const card = document.createElement('div');
-      card.className = `pause-weapon-card ${isEquipped ? 'equipped' : ''}`;
-
-      let actionBtn = "";
-      if (isEquipped) {
-        const canUnequip = equippedWeaponIds.length > 1;
-        actionBtn = `<button class="buy-btn pause-weapon-btn equip-toggle-btn" data-id="${w.id}" ${canUnequip ? '' : 'disabled'}>장착 해제</button>`;
-      } else {
-        const label = equippedWeaponIds.length >= 3 ? '교체 장착' : '장착하기';
-        actionBtn = `<button class="buy-btn pause-weapon-btn equip-toggle-btn" data-id="${w.id}">${label}</button>`;
-      }
-
-      card.innerHTML = `
-        <div class="pause-weapon-card-header">
-          <img class="pause-weapon-card-icon" src="/assets/weapons/weapon_${String(w.id).padStart(2, '0')}.png" alt="${w.name}">
-          <h4>${w.name}</h4>
-        </div>
-        <p class="pause-weapon-desc">피해: ${w.dmg} / 범위: ${getWeaponRangeLabel(w.id, w.type)}</p>
-        ${actionBtn}
-      `;
-
-      weaponList.appendChild(card);
-    });
-
-    // 3. Bind equip action click listeners
-    weaponList.querySelectorAll('.equip-toggle-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = parseInt(e.currentTarget.dataset.id);
-        if (equipWeapon(id)) {
-          // Re-render immediately
-          renderPauseLounge();
-          // Update HUD to show the new weapon status
-          updateHUD();
-          // Save session changes immediately
-          saveSessionSnapshot();
-        }
-      });
-    });
-  }
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', initGameApp);
+} else {
+  initGameApp();
 }
-
 function showPauseMenu() {
-  if (gameState !== 'play' && !isVisibleGameplayScreen()) return;
+  if (gameState !== 'play' && !isVisibleGameplayScreen(player, currentProblem)) return;
   gameState = 'pause';
   inputController.reset();
   blurActiveControl();
@@ -525,7 +423,7 @@ function restartFromPause() {
   projectiles = [];
   monsterProjectiles = [];
   dropItems = [];
-  hitEffects = [];
+  resetEffects();
   boss = null;
   inputController.reset();
   resetCameraOffset();
@@ -535,8 +433,10 @@ function restartFromPause() {
 function resetRunData() {
   clearActiveSession();
   resetState();
-  correctAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  resetCurriculumGameQuestionBank();
+  correctAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+  totalAnswers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+  wrongQuestionStats = {};
   combo = 0;
   currentStage = 1;
   stageTimer = REGULAR_STAGE_DURATION;
@@ -549,13 +449,12 @@ function resetRunData() {
   projectiles = [];
   monsterProjectiles = [];
   dropItems = [];
-  hitEffects = [];
+  resetEffects();
   boss = null;
   inputController.reset();
   resetCameraOffset();
 }
 
-// Bind all UI button clicks and key listeners
 function setupEventListeners() {
   document.querySelectorAll('button').forEach(button => {
     button.type = 'button';
@@ -604,7 +503,7 @@ function setupEventListeners() {
     resetRunData();
 
     // Init session entities with selected gender
-    player = new Player(worldWidth / 2, worldHeight / 2, playerName, selectedGender);
+    player = createRunPlayer(playerName);
     
     // Sync upgrades
     player.refreshStats();
@@ -652,7 +551,7 @@ function setupEventListeners() {
       const playerName = nameInput.value.trim() || "홍길동";
       
       resetRunData();
-      player = new Player(worldWidth / 2, worldHeight / 2, playerName, selectedGender);
+      player = createRunPlayer(playerName);
       player.refreshStats();
       loadStage(1);
     } catch (err) {
@@ -694,7 +593,7 @@ function setupEventListeners() {
       const playerName = nameInput.value.trim() || "홍길동";
       
       resetRunData();
-      player = new Player(worldWidth / 2, worldHeight / 2, playerName, selectedGender);
+      player = createRunPlayer(playerName);
       player.refreshStats();
       loadStage(1);
 
@@ -774,14 +673,13 @@ function setupEventListeners() {
   });
 }
 
-// Prepare next level stage and start playing
 function loadStage(stageNum) {
   // Clear scene entities
   monsters = [];
   projectiles = [];
   monsterProjectiles = [];
   dropItems = [];
-  hitEffects = [];
+  resetEffects();
   boss = null;
   inputController.reset();
   resetCameraOffset();
@@ -820,441 +718,6 @@ function loadStage(stageNum) {
   saveSessionSnapshot();
 }
 
-function updateHUD() {
-  if (!player || !currentProblem) return;
-
-  // Render problem text
-  document.getElementById('problemText').innerText = currentProblem.text;
-  document.getElementById('problemTimer').innerText = boss ? 'BOSS' : stageTimer;
-
-  // Gauge Progress
-  const gaugePercent = (problemProgress / currentProblem.requiredCount) * 100;
-  document.getElementById('problemGauge').style.width = `${Math.min(100, gaugePercent)}%`;
-
-  // EXP & HP Gauges
-  const expPercent = (player.exp / player.nextLevelExp) * 100;
-  document.getElementById('expBar').style.width = `${Math.min(100, expPercent)}%`;
-  document.getElementById('levelText').innerText = `LV.${player.level}`;
-
-  player.hp = Math.floor(Math.min(player.maxHp, Math.max(0, player.hp)));
-  const hpPercent = (player.hp / player.maxHp) * 100;
-  document.getElementById('hpBar').style.width = `${Math.max(0, hpPercent)}%`;
-  document.getElementById('hpText').innerText = `HP: ${Math.floor(player.hp)}/${Math.floor(player.maxHp)}`;
-
-  player.gold = getGold();
-  document.getElementById('goldText').innerText = player.gold;
-  document.getElementById('comboText').innerText = `${combo} COMBO`;
-
-  document.getElementById('debug-weapon-status')?.remove();
-}
-
-// Setup and show Level up choice cards
-function triggerLevelUp() {
-  gameState = 'levelUp';
-  document.getElementById('levelUpModal').classList.remove('hidden');
-
-  const container = document.getElementById('skillCardContainer');
-  container.innerHTML = "";
-
-  // 3 choices (1 weapon upgrade + 2 passives)
-  const choices = [
-    { name: "무기 화력 강화", desc: "이 세션 동안 현재 무기 공격력이 10% 상승합니다.", icon: "🔥", type: "weapon" },
-    { name: "이동 가속 부스터", desc: "캐릭터의 이동 스피드가 15% 상승합니다.", icon: "👟", type: "speed" },
-    { name: "자철석 자석 보강", desc: "보석과 아이템의 흡수 범위를 30px 늘립니다.", icon: "🧲", type: "magnet" }
-  ];
-
-  choices.forEach(c => {
-    const card = document.createElement('div');
-    card.className = "skill-card";
-    
-    card.innerHTML = `
-      <span class="skill-icon">${c.icon}</span>
-      <div class="skill-info">
-        <h4>${c.name}</h4>
-        <p>${c.desc}</p>
-      </div>
-    `;
-
-    card.addEventListener('click', () => {
-      applyLevelUpChoice(c);
-      document.getElementById('levelUpModal').classList.add('hidden');
-      gameState = 'play';
-    });
-
-    container.appendChild(card);
-  });
-}
-
-function applyLevelUpChoice(choice) {
-  if (choice.type === 'weapon') {
-    // Current weapon damage boost (lasts for this stage)
-    player.atkMultiplier = (player.atkMultiplier || 1) + 0.1;
-  } else if (choice.type === 'speed') {
-    player.baseSpeed += 0.5;
-  } else if (choice.type === 'magnet') {
-    player.magnetRange += 30;
-  }
-  updateHUD();
-}
-
-function triggerLevelUpEnhanced() {
-  gameState = 'levelUp';
-  document.getElementById('levelUpModal').classList.remove('hidden');
-
-  const container = document.getElementById('skillCardContainer');
-  container.innerHTML = "";
-
-  getLevelUpChoices().forEach(choice => {
-    const card = document.createElement('div');
-    card.className = "skill-card";
-    card.innerHTML = `
-      <span class="skill-icon">${choice.icon}</span>
-      <div class="skill-info">
-        <h4>${choice.name}</h4>
-        <p>${choice.desc}</p>
-      </div>
-    `;
-
-    card.addEventListener('click', () => {
-      applyEnhancedLevelUpChoice(choice);
-      document.getElementById('levelUpModal').classList.add('hidden');
-      gameState = 'play';
-    });
-
-    container.appendChild(card);
-  });
-}
-
-function getLevelUpChoices() {
-  const skillPool = [
-    { name: "무기 화력 강화", desc: "모든 무기 피해량이 12% 증가합니다.", icon: "⚔️", type: "attack" },
-    { name: "연사력 향상", desc: "자동 공격 간격이 12% 짧아집니다.", icon: "⚡", type: "fireRate" },
-    { name: "방어력 향상", desc: "받는 피해를 줄이는 방어력이 3 증가합니다.", icon: "🛡️", type: "defense" },
-    { name: "최대 체력 강화", desc: "최대 HP가 20 증가하고 즉시 20 회복합니다.", icon: "❤️", type: "maxHp" },
-    { name: "이동 속도 향상", desc: "이동 속도가 10% 증가합니다.", icon: "👟", type: "speed" },
-    { name: "자석 범위 확장", desc: "숫자와 보석을 끌어오는 범위가 35 증가합니다.", icon: "🧲", type: "magnet" },
-    { name: "학습 집중력", desc: "경험치 획득량이 15% 증가합니다.", icon: "📘", type: "exp" },
-    { name: "체력 향상", desc: "전체 체력이 10%증가합니다.", icon: "❤️", type: "hpPercent" }
-  ];
-
-  return skillPool.sort(() => Math.random() - 0.5).slice(0, 3);
-}
-
-function applyEnhancedLevelUpChoice(choice) {
-  if (choice.type === 'attack') {
-    player.atkMultiplier *= 1.12;
-  } else if (choice.type === 'fireRate') {
-    player.fireRateMultiplier *= 1.12;
-  } else if (choice.type === 'defense') {
-    player.bonusDefense += 3;
-    player.refreshStats();
-  } else if (choice.type === 'maxHp') {
-    player.bonusMaxHp += 20;
-    player.refreshStats();
-    player.heal(20);
-  } else if (choice.type === 'speed') {
-    player.baseSpeed *= 1.1;
-  } else if (choice.type === 'magnet') {
-    player.bonusMagnet += 35;
-    player.refreshStats();
-  } else if (choice.type === 'exp') {
-    player.expMultiplier *= 1.15;
-  } else if (choice.type === 'hpPercent') {
-    const increase = Math.max(1, Math.floor(player.maxHp * 0.1));
-    player.bonusMaxHp += increase;
-    player.refreshStats();
-  }
-
-  updateHUD();
-}
-
-function getWeaponFireStyleLabel(id, type) {
-  return getProfileFireStyleLabel(id, type);
-}
-
-function getWeaponRangeLabel(id, type) {
-  return getProfileRangeLabel(id, type);
-}
-
-function getWeaponDps(weapon) {
-  return getWeaponBalanceMetrics(weapon, getWeaponLevel(weapon.id)).focusDps;
-}
-
-function getWeaponDisplayDamage(weapon) {
-  const level = getWeaponLevel(weapon.id);
-  return Math.round(weapon.dmg * (1 + (level - 1) * 0.1));
-}
-
-function getCurrentStatSummary() {
-  const equippedWeapons = getEquippedWeapons();
-  const weaponDamage = equippedWeapons.reduce((sum, weapon) => sum + getWeaponDisplayDamage(weapon), 0);
-  const weaponDps = equippedWeapons.reduce((sum, weapon) => sum + getWeaponDps(weapon), 0);
-
-  return {
-    maxHp: player ? Math.floor(player.maxHp) : 100 + getStatValue('maxHp'),
-    defense: player ? Math.floor(player.defense) : getStatValue('def'),
-    attackBonus: Math.round(getStatValue('atk') + (((player?.atkMultiplier || 1) - 1) * 100)),
-    magnet: player ? Math.floor(player.magnetRange) : 50 + getStatValue('magnet'),
-    goldBonus: Math.round(getStatValue('goldBonus') * 100),
-    fireRate: Math.round(((player?.fireRateMultiplier || 1) - 1) * 100),
-    weaponDamage,
-    weaponDps,
-    equippedWeapons
-  };
-}
-
-function renderShopStatusPanel() {
-  const panel = document.getElementById('playerStatusPanel');
-  if (!panel || !player) return;
-
-  const stats = getCurrentStatSummary();
-  const preview = document.getElementById('shopPlayerPreview');
-  preview.classList.toggle('female', player.gender === 'female');
-  document.getElementById('shopPlayerName').textContent = player.name || 'PLAYER';
-
-  document.getElementById('shopPlayerStats').innerHTML = `
-    <div class="status-section-title">능력치</div>
-    <div class="status-row"><span>최대 HP</span><strong>${stats.maxHp}</strong></div>
-    <div class="status-row"><span>방어력</span><strong>${stats.defense}</strong></div>
-    <div class="status-row"><span>공격 보너스</span><strong>+${stats.attackBonus}%</strong></div>
-    <div class="status-row"><span>연사 보너스</span><strong>+${stats.fireRate}%</strong></div>
-    <div class="status-row"><span>자석 범위</span><strong>${stats.magnet}</strong></div>
-    <div class="status-row"><span>골드 보너스</span><strong>+${stats.goldBonus}%</strong></div>
-    <div class="status-row"><span>무기 총 피해</span><strong>${stats.weaponDamage}</strong></div>
-    <div class="status-row"><span>초당 화력</span><strong>${stats.weaponDps}</strong></div>
-  `;
-
-  document.getElementById('shopEquippedWeapons').innerHTML = `
-    <div class="status-section-title">장착 무기</div>
-    ${stats.equippedWeapons.map((weapon, index) => `
-      <div class="equipped-weapon-row">
-        <span>${index + 1}. ${weapon.name} LV.${getWeaponLevel(weapon.id)}</span>
-        <strong>${getWeaponDisplayDamage(weapon)}</strong>
-      </div>
-    `).join('') || '<div class="equipped-weapon-row"><span>없음</span><strong>-</strong></div>'}
-  `;
-}
-
-function getWeaponChangeText(weapon, isOwned, isEquipped, equippedWeaponIds) {
-  const equippedWeapons = getEquippedWeapons();
-  const currentDamage = equippedWeapons.reduce((sum, item) => sum + getWeaponDisplayDamage(item), 0);
-  const currentDps = equippedWeapons.reduce((sum, item) => sum + getWeaponDps(item), 0);
-  let nextWeapons = [...equippedWeapons];
-
-  if (!isOwned) {
-    if (!nextWeapons.some(item => item.id === weapon.id)) {
-      if (nextWeapons.length < 3) nextWeapons.push(weapon);
-      else nextWeapons[2] = weapon;
-    }
-  } else if (isEquipped) {
-    if (nextWeapons.length > 1) nextWeapons = nextWeapons.filter(item => item.id !== weapon.id);
-  } else if (nextWeapons.length < 3) {
-    nextWeapons.push(weapon);
-  } else {
-    nextWeapons[2] = weapon;
-  }
-
-  const nextDamage = nextWeapons.reduce((sum, item) => sum + getWeaponDisplayDamage(item), 0);
-  const nextDps = nextWeapons.reduce((sum, item) => sum + getWeaponDps(item), 0);
-  const deltaDamage = nextDamage - currentDamage;
-  const deltaDps = nextDps - currentDps;
-  const signDamage = deltaDamage >= 0 ? '+' : '';
-  const signDps = deltaDps >= 0 ? '+' : '';
-
-  if (isEquipped && equippedWeaponIds.length <= 1) return '최소 1개 장착 필요';
-  return `변화: 피해 ${signDamage}${deltaDamage}, 초당 화력 ${signDps}${deltaDps}`;
-}
-
-function getWeaponUpgradeEffectText(weapon, summary) {
-  const nextLevel = Math.min(summary.maxLevel, summary.level + 1);
-  const nextBonus = nextLevel - 1;
-  const parts = [`공격력 +${nextBonus * 10}%`];
-
-  if (['hit', 'pierce', 'homing'].includes(weapon.type)) {
-    parts.push(`크기 +${nextBonus * 6}%`);
-  }
-  if ([3, 8, 11, 12, 18, 19, 21, 27, 28, 30].includes(weapon.id)) {
-    parts.push(`발사체 +${Math.floor(nextBonus / 3)}`);
-  }
-  if (weapon.type === 'splash' || [6, 8, 11, 12, 15, 17, 21, 22, 25, 27, 30].includes(weapon.id)) {
-    parts.push(`범위 +${nextBonus * 8}%`);
-  }
-
-  return parts.join(', ');
-}
-
-function getUpgradeChangeText(upgrade, isMax) {
-  if (isMax) return '변화: 최대 강화 완료';
-  if (upgrade.key === 'maxHp') return `변화: 최대 HP +${upgrade.statAdd}`;
-  if (upgrade.key === 'atk') return `변화: 공격 보너스 +${upgrade.statAdd}%`;
-  if (upgrade.key === 'def') return `변화: 방어력 +${upgrade.statAdd}`;
-  if (upgrade.key === 'magnet') return `변화: 자석 범위 +${upgrade.statAdd}`;
-  if (upgrade.key === 'goldBonus') return `변화: 골드 보너스 +${Math.round(upgrade.statAdd * 100)}%`;
-  return `변화: +${upgrade.statAdd}`;
-}
-
-// Renders the shop lounge lobby
-function openShopScreen() {
-  gameState = 'shop';
-  blurActiveControl();
-  hidePauseMenu();
-  hideStartScreen();
-  document.getElementById('gameContainer').classList.add('hidden');
-  document.getElementById('shopScreen').classList.remove('hidden');
-
-  document.getElementById('shopGoldText').innerText = getGold();
-  renderShopStatusPanel();
-
-  const brainTrainingBtn = document.getElementById('brainTrainingBtn');
-  const brainTrainingDone = brainTrainingCompletedStages.has(currentStage);
-  brainTrainingBtn.disabled = brainTrainingDone;
-  brainTrainingBtn.textContent = brainTrainingDone ? '두뇌 강화 완료' : '특공대원 두뇌 강화';
-
-  // Render Weapons Shop
-  const weaponList = document.getElementById('weaponShopList');
-  weaponList.innerHTML = "";
-  
-  const ownedWeapons = getOwnedWeapons();
-  const equippedWeapons = getEquippedWeapons();
-  const equippedWeaponIds = equippedWeapons.map(w => w.id);
-
-  WEAPONS_DB.forEach(w => {
-    const card = document.createElement('div');
-    const isOwned = ownedWeapons.includes(w.id);
-    const isEquipped = equippedWeaponIds.includes(w.id);
-    const weaponLevel = getWeaponLevel(w.id);
-    const upgradeSummary = getWeaponUpgradeSummary(w.id);
-    const weaponUpgradeCost = getWeaponUpgradeCost(w.id);
-    const isWeaponMax = weaponLevel >= upgradeSummary.maxLevel;
-    const canUpgradeWeapon = isOwned && !isWeaponMax && getGold() >= weaponUpgradeCost;
-    card.className = `shop-card ${isOwned ? 'purchased' : ''}`;
-
-    let actionBtn = "";
-    if (isEquipped) {
-      const canUnequip = equippedWeaponIds.length > 1;
-      actionBtn = `<button class="buy-btn equip-action-btn" data-id="${w.id}" ${canUnequip ? '' : 'disabled'}>${canUnequip ? '장착 해제' : '장착중'}</button>`;
-    } else if (isOwned) {
-      const label = equippedWeaponIds.length >= 3 ? '교체 장착' : '장착하기';
-      actionBtn = `<button class="buy-btn equip-action-btn" data-id="${w.id}">${label}</button>`;
-    } else {
-      const isAffordable = getGold() >= w.price;
-      actionBtn = `<button class="buy-btn buy-action-btn" data-id="${w.id}" ${isAffordable ? '' : 'disabled'}>구매 (🪙 ${w.price})</button>`;
-    }
-
-    card.innerHTML = `
-      <div class="card-header">
-        <img class="weapon-card-icon" src="/assets/weapons/weapon_${String(w.id).padStart(2, '0')}.png" alt="${w.name}" loading="lazy">
-        <div class="card-title">
-          <h3>${w.name}</h3>
-          <span class="card-type ${w.type}">${w.type.toUpperCase()} · LV.${weaponLevel}/10</span>
-        </div>
-      </div>
-      <p class="card-desc">${w.desc}</p>
-      <div class="card-price-row">
-        <span class="price">피해량: ${w.dmg}</span>
-        ${actionBtn}
-      </div>
-    `;
-    if (isOwned) {
-      card.insertAdjacentHTML('beforeend', `
-        <div class="weapon-upgrade-row">
-          <span class="weapon-upgrade-info">${isWeaponMax ? '강화 MAX' : `강화비 ${weaponUpgradeCost}G`}</span>
-          <button class="buy-btn weapon-upgrade-action-btn" data-id="${w.id}" ${canUpgradeWeapon ? '' : 'disabled'}>
-            ${isWeaponMax ? 'MAX' : '무기 강화'}
-          </button>
-        </div>
-        <div class="weapon-upgrade-effect">${isWeaponMax ? '최대 강화 완료' : getWeaponUpgradeEffectText(w, upgradeSummary)}</div>
-      `);
-    }
-    const balanceMetrics = getWeaponBalanceMetrics(w, weaponLevel);
-    card.querySelector('.price').textContent = isEquipped
-      ? `장착 슬롯 ${equippedWeaponIds.indexOf(w.id) + 1}/3`
-      : `피해 ${getWeaponDisplayDamage(w)} · DPS ${balanceMetrics.focusDps}`;
-    card.querySelector('.card-desc').textContent = `${w.desc} 발사 방식: ${getWeaponFireStyleLabel(w.id, w.type)} / 사정거리: ${getWeaponRangeLabel(w.id, w.type)} / 광역 잠재력: ${balanceMetrics.areaDps}`;
-    card.insertAdjacentHTML('beforeend', `<div class="change-row"><span>${getWeaponChangeText(w, isOwned, isEquipped, equippedWeaponIds)}</span></div>`);
-
-    weaponList.appendChild(card);
-  });
-
-  // Render Stat Upgrade Shop
-  const upgradeList = document.getElementById('upgradeShopList');
-  upgradeList.innerHTML = "";
-
-  UPGRADES_DB.forEach(u => {
-    const card = document.createElement('div');
-    const lvl = getUpgradeLevel(u.key);
-    const cost = getUpgradeCost(u.key);
-    const isMax = lvl >= u.maxLevel;
-    const isAffordable = getGold() >= cost && !isMax;
-
-    card.className = "shop-card";
-    card.innerHTML = `
-      <div class="card-header">
-        <span class="card-icon">${u.symbol}</span>
-        <div class="card-title">
-          <h3>${u.name}</h3>
-          <span class="card-type homing">LV. ${lvl}/${u.maxLevel}</span>
-        </div>
-      </div>
-      <p class="card-desc">${u.desc}</p>
-      <div class="card-price-row">
-        <span class="price">${isMax ? 'MAX' : `비용: 🪙 ${cost}`}</span>
-        <button class="buy-btn upgrade-action-btn" data-key="${u.key}" ${isAffordable ? '' : 'disabled'}>
-          ${isMax ? '강화 완료' : '강화하기'}
-        </button>
-      </div>
-    `;
-    card.insertAdjacentHTML('beforeend', `<div class="change-row"><span>${getUpgradeChangeText(u, isMax)}</span></div>`);
-
-    upgradeList.appendChild(card);
-  });
-
-  // Bind click logic for dynamically created buttons
-  document.querySelectorAll('.buy-action-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const id = parseInt(e.currentTarget.dataset.id);
-      if (purchaseWeapon(id)) {
-        player.gold = getGold();
-        openShopScreen(); // refresh
-      }
-    });
-  });
-
-  document.querySelectorAll('.equip-action-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const id = parseInt(e.currentTarget.dataset.id);
-      if (equipWeapon(id)) {
-        player.gold = getGold();
-        openShopScreen();
-      }
-    });
-  });
-
-  document.querySelectorAll('.weapon-upgrade-action-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const id = parseInt(e.currentTarget.dataset.id);
-      if (upgradeWeapon(id)) {
-        player.gold = getGold();
-        openShopScreen();
-      }
-    });
-  });
-
-  document.querySelectorAll('.upgrade-action-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const key = e.currentTarget.dataset.key;
-      if (purchaseUpgrade(key)) {
-        player.refreshStats(); // Sync upgrade stats
-        player.gold = getGold();
-        openShopScreen();
-      }
-    });
-  });
-
-  saveSessionSnapshot();
-}
-
-// Renders the cert report screen
 function openCertificateScreen() {
   gameState = 'cert';
   clearActiveSession();
@@ -1265,10 +728,9 @@ function openCertificateScreen() {
   document.getElementById('shopScreen').classList.add('hidden');
   
   const finalStage = getFinalStage(currentStage);
-  showCertificate(player, correctAnswers, totalAnswers, finalStage);
+  showCertificate(player, correctAnswers, totalAnswers, wrongQuestionStats, finalStage);
 }
 
-// triggers review paper after death
 function handlePlayerDeath() {
   const transition = getPlayerDeathTransition({ isDeathHandled, usedReviewRevive });
   if (transition.destination === 'ignore') return;
@@ -1333,7 +795,7 @@ function update() {
 
   const now = Date.now();
 
-  const activeProblem = createBossGimmickProblem(boss, currentProblem);
+  const activeProblem = createBossGimmickProblem(boss, currentProblem, player?.curriculum);
 
   // 1. Check timer ticks (once per second).
   const timerResult = resolveGameTimerTick({
@@ -1378,7 +840,7 @@ function update() {
   player.update(keys, worldWidth, worldHeight);
 
   // 4. Update Auto shoot
-  player.shoot(monsters, projectiles, boss && boss.hp > 0 ? boss : null);
+  player.shoot(monsters, projectiles, boss && boss.hp > 0 ? boss : null, spawnFireEffect);
 
   // 5. Update Boss (if active)
   if (boss) {
@@ -1432,11 +894,10 @@ function update() {
     onLevelUp: triggerLevelUpEnhanced,
     onMonsterDefeat: monster => handleMonsterDefeat(monster, activeProblem, false),
     onNumberAnswer: (item, result) => {
-      totalAnswers[activeProblem.area]++;
+      recordProblemAttempt(correctAnswers, totalAnswers, wrongQuestionStats, activeProblem, result.correct);
 
       if (result.correct) {
         combo = result.combo;
-        correctAnswers[activeProblem.area]++;
         addGold(result.goldReward);
         player.gold = getGold();
         spawnTextParticle(item.x, item.y, "정답! +🪙", "#39ff14");
@@ -1488,184 +949,13 @@ function update() {
 
   monsters = monsters.filter(m => m.hp > 0 || Date.now() - m.spawnTime < 1000);
 
-  // 12. Clear regular stages after surviving for 90 seconds.
+  // 12. Clear regular stages after the configured survival time.
   if (!boss && !isBossStage(currentStage) && stageTimer <= 0) {
     triggerStageClear(false);
     return;
   }
 
   updateHUD();
-}
-
-// Particle list for floating damage texts
-let textParticles = [];
-
-function spawnTextParticle(x, y, text, color) {
-  textParticles.push({
-    x, y, text, color,
-    alpha: 1.0,
-    life: 30
-  });
-}
-
-function spawnHitEffect(x, y, projectile, scale = 1) {
-  if (!projectile) return;
-  const visual = getWeaponVisualProfile(projectile.id);
-  const tier = visual.rank;
-  const isAreaHit = projectile.splashRadius > 0 || ['explosive', 'mine', 'throw_fire', 'fire_patch', 'gravity_well', 'nova'].includes(projectile.behavior);
-  const color = visual.color;
-  const sparkCount = Math.round((4 + tier * 3) * visual.impactScale * scale);
-  const radius = visual.drawSize * (isAreaHit ? 1.65 : 1.15) * visual.impactScale * scale;
-
-  hitEffects.push({
-    x,
-    y,
-    color,
-    radius,
-    sparkCount,
-    tier,
-    isAreaHit,
-    createdTime: Date.now(),
-    lifeTime: visual.lifeTime,
-    angleSeed: Math.random() * Math.PI * 2
-  });
-
-  if (hitEffects.length > 80) hitEffects.splice(0, hitEffects.length - 80);
-}
-
-function drawHitEffects() {
-  const now = Date.now();
-  hitEffects.forEach(effect => {
-    const progress = Math.min(1, (now - effect.createdTime) / effect.lifeTime);
-    const alpha = 1 - progress;
-    const ringRadius = effect.radius * (0.35 + progress * 0.9);
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(effect.x, effect.y);
-
-    ctx.strokeStyle = effect.color;
-    ctx.lineWidth = Math.max(2, 1 + effect.tier * 0.9);
-    ctx.shadowColor = effect.color;
-    ctx.shadowBlur = effect.tier >= 2 ? 16 : 8;
-    ctx.beginPath();
-    ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    if (effect.isAreaHit || effect.tier >= 2) {
-      ctx.globalAlpha = alpha * 0.35;
-      ctx.fillStyle = effect.color;
-      ctx.beginPath();
-      ctx.arc(0, 0, ringRadius * 0.55, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#ffffff';
-    for (let i = 0; i < effect.sparkCount; i++) {
-      const angle = effect.angleSeed + (Math.PI * 2 * i) / effect.sparkCount;
-      const distance = effect.radius * (0.25 + progress * (0.65 + (i % 3) * 0.12));
-      const size = 1.5 + effect.tier * 0.55 + (i % 2);
-      ctx.beginPath();
-      ctx.arc(Math.cos(angle) * distance, Math.sin(angle) * distance, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    if (effect.tier >= 3) {
-      ctx.globalAlpha = alpha * 0.9;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      const rayCount = Math.min(8, effect.tier + 1);
-      for (let i = 0; i < rayCount; i++) {
-        const angle = effect.angleSeed + i * (Math.PI * 2 / rayCount);
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(angle) * ringRadius * 0.2, Math.sin(angle) * ringRadius * 0.2);
-        ctx.lineTo(Math.cos(angle) * ringRadius * 1.2, Math.sin(angle) * ringRadius * 1.2);
-        ctx.stroke();
-      }
-    }
-
-    ctx.restore();
-  });
-
-  hitEffects = hitEffects.filter(effect => now - effect.createdTime < effect.lifeTime);
-}
-
-// Renders Canvas frame
-function draw() {
-  ctx.fillStyle = '#080312'; // Black spacer void
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const camera = getCameraOffset();
-  ctx.save();
-  ctx.translate(-camera.x, -camera.y);
-
-  drawStageBackground(camera);
-
-  // Draw grid pattern for map floor
-  ctx.strokeStyle = 'rgba(170, 70, 255, 0.09)';
-  ctx.lineWidth = 1;
-  const gridSize = 40;
-  const startX = Math.floor(camera.x / gridSize) * gridSize;
-  const endX = Math.min(worldWidth, camera.x + canvas.width + gridSize);
-  const startY = Math.floor(camera.y / gridSize) * gridSize;
-  const endY = Math.min(worldHeight, camera.y + canvas.height + gridSize);
-
-  for (let x = startX; x <= endX; x += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, worldHeight);
-    ctx.stroke();
-  }
-  for (let y = startY; y <= endY; y += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(worldWidth, y);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = 'rgba(0, 255, 255, 0.28)';
-  ctx.lineWidth = 4;
-  ctx.strokeRect(2, 2, worldWidth - 4, worldHeight - 4);
-
-  // Draw Drop Items
-  dropItems.forEach(item => item.draw(ctx));
-
-  // Draw Projectiles
-  projectiles.forEach(p => p.draw(ctx));
-
-  // Draw Monster Projectiles
-  monsterProjectiles.forEach(mp => mp.draw(ctx));
-
-  // Draw Monsters
-  monsters.forEach(m => {
-    if (m.hp > 0) m.draw(ctx);
-  });
-
-  // Draw Player
-  if (player) player.draw(ctx);
-
-  // Draw Boss
-  if (boss) boss.draw(ctx);
-
-  // Render weapon hit effects above actors
-  drawHitEffects();
-
-  // Render floating text particles
-  textParticles.forEach((tp, idx) => {
-    tp.y -= 1.0;
-    tp.alpha -= 0.035;
-    ctx.fillStyle = tp.color;
-    ctx.globalAlpha = Math.max(0, tp.alpha);
-    ctx.font = 'bold 12px "Press Start 2P"';
-    ctx.fillText(tp.text, tp.x, tp.y);
-  });
-  textParticles = textParticles.filter(tp => tp.alpha > 0);
-  ctx.restore();
-
-  if (gameState === 'stageClear') {
-    drawStageClearBanner();
-  }
 }
 
 function triggerStageClear(isBoss = false) {
@@ -1718,64 +1008,4 @@ function updateStageClear() {
     bossDeathPos = null;
     openShopScreen();
   }
-}
-
-function drawStageClearBanner() {
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-
-  ctx.save();
-
-  // 1. Draw dark backdrop
-  ctx.fillStyle = 'rgba(8, 3, 18, 0.65)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // 2. Draw retro container box
-  const boxW = Math.min(520, canvas.width * 0.85);
-  const boxH = 150;
-
-  ctx.fillStyle = 'rgba(26, 0, 51, 0.88)';
-  ctx.strokeStyle = '#00ffff';
-  ctx.lineWidth = 4;
-  ctx.shadowColor = '#00ffff';
-  ctx.shadowBlur = 18;
-
-  ctx.fillRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
-  ctx.strokeRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH);
-
-  // Draw inner gold trim line
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = '#ffd700';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(cx - boxW / 2 + 6, cy - boxH / 2 + 6, boxW - 12, boxH - 12);
-
-  // 3. Draw Stage Clear Text
-  const scale = 1.0 + Math.sin(Date.now() * 0.01) * 0.04; // idle pulsing
-
-  ctx.translate(cx, cy);
-  ctx.scale(scale, scale);
-
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  // Neon Green text for STAGE CLEAR
-  ctx.fillStyle = '#39ff14';
-  ctx.shadowColor = '#39ff14';
-  ctx.shadowBlur = 12;
-  ctx.font = 'bold 36px "Press Start 2P", sans-serif';
-  ctx.fillText("STAGE CLEAR!", 0, -22);
-
-  // Golden text for stage indicator
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = '#ffd700';
-  ctx.font = 'bold 16px "Press Start 2P", sans-serif';
-  const stageType = getStageClearLabel(currentStage);
-  ctx.fillText(`STAGE ${currentStage} - ${stageType}`, 0, 26);
-
-  // Small loading hint
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-  ctx.font = 'bold 11px sans-serif';
-  ctx.fillText("대기실 상점으로 이동 중...", 0, 52);
-
-  ctx.restore();
 }

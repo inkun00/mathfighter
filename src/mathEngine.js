@@ -1,3 +1,10 @@
+import {
+  generateCurriculumBrainTrainingQuestions,
+  generateCurriculumProblem,
+  generateCurriculumReviewQuestions
+} from './curriculumProblems.js';
+import { extractWholeNumberAnswer } from './numericAnswer.js';
+
 /**
  * Math Engine for Math Fighter
  * Generates divisibility, multiple, GCD, LCM, and relationship problems based on stage level.
@@ -41,6 +48,9 @@ export function getLCM(a, b) {
 }
 
 export function generateBrainTrainingQuestions(stage = 1) {
+  const curriculumQuestions = generateCurriculumBrainTrainingQuestions();
+  if (curriculumQuestions) return curriculumQuestions;
+
   if (isCustomMode()) {
     const quizData = getCustomQuizData();
     const stamp = Date.now().toString(36);
@@ -55,40 +65,21 @@ export function generateBrainTrainingQuestions(stage = 1) {
       } while (used.has(q.name) && attempts < 20);
       used.add(q.name);
 
-      const correctAnswer = randomFrom(q.items);
-
-      // Collect wrong options from other questions
-      const wrongOptions = [];
-      quizData.forEach(other => {
-        if (other.name !== q.name) wrongOptions.push(...other.items);
-      });
-
-      if (i === 0 && wrongOptions.length >= 3) {
-        // Multiple choice
-        const options = [correctAnswer];
-        while (options.length < 4 && wrongOptions.length > 0) {
-          const wrong = wrongOptions.splice(Math.floor(Math.random() * wrongOptions.length), 1)[0];
-          if (!options.includes(wrong)) options.push(wrong);
-        }
-        questions.push({
-          id: `brain-${stamp}-${i + 1}`,
-          text: q.name,
-          options: shuffle(options),
-          answer: correctAnswer,
-          answers: q.items
-        });
-      } else {
-        // Short answer
+      const numericAnswers = q.items
+        .map(extractWholeNumberAnswer)
+        .filter(Boolean);
+      if (numericAnswers.length > 0) {
+        const correctAnswer = randomFrom(numericAnswers);
         questions.push({
           id: `brain-${stamp}-${i + 1}`,
           text: q.name,
           options: [],
           answer: correctAnswer,
-          answers: q.items
+          answers: [...new Set(numericAnswers)]
         });
       }
     }
-    return questions;
+    if (questions.length === 3) return questions;
   }
 
   const difficulty = Math.max(1, Math.min(5, Math.ceil(stage / 10)));
@@ -298,6 +289,9 @@ export function generateProblem(stage) {
     };
   }
 
+  const curriculumProblem = generateCurriculumProblem();
+  if (curriculumProblem) return curriculumProblem;
+
   // Determine area based on stage difficulty ratios
   let area = 1;
   const rand = Math.random() * 100;
@@ -422,26 +416,24 @@ export function generateProblem(stage) {
   };
 }
 
+export function getCorrectDropChance(problem) {
+  return problem ? 0.25 : 0;
+}
+
+const answerDropStates = new WeakMap();
+
 // Generate the pool of numbers to drop when a monster dies
 export function getRandomNumberPool(problem) {
   if (!problem) return [1, 2, 3, 4, 5];
 
-  if (problem.type === 'custom_text') {
+  if (problem.type === 'custom_text' || problem.type === 'curriculum_choice') {
     const correctAnswers = problem.options;
     const allOtherItems = problem.wrongAnswers || [];
 
-    console.log('[MathEngine] question:', problem.targetNum,
-      '| correct:', correctAnswers,
-      '| wrongPool:', allOtherItems.length, allOtherItems.slice(0, 5));
-
-    // Build pool: 60% correct, 40% wrong
-    const pool = [];
-    for (let i = 0; i < 5; i++) {
-      if (allOtherItems.length > 0 && Math.random() >= 0.6) {
-        pool.push(allOtherItems[Math.floor(Math.random() * allOtherItems.length)]);
-      } else {
-        pool.push(correctAnswers[Math.floor(Math.random() * correctAnswers.length)]);
-      }
+    const pool = [correctAnswers[Math.floor(Math.random() * correctAnswers.length)]];
+    for (let i = 1; i < 4; i++) {
+      const source = allOtherItems.length > 0 ? allOtherItems : correctAnswers;
+      pool.push(source[Math.floor(Math.random() * source.length)]);
     }
 
     return pool;
@@ -449,51 +441,61 @@ export function getRandomNumberPool(problem) {
 
   const correctOnes = [...problem.options];
   const pool = [];
-  const correctNumberChance = 0.725; // Raises selected correct-number odds by about 50%.
 
-  // 1. Add correct answers.
-  // Ensure at least one correct answer is present
+  // One correct candidate and three wrong candidates creates an exact 1:3 pool.
   const chosenCorrect = correctOnes[Math.floor(Math.random() * correctOnes.length)];
   pool.push(chosenCorrect);
 
-  // Generate 4 other numbers (some correct, some incorrect)
-  for (let i = 0; i < 4; i++) {
-    if (Math.random() < correctNumberChance) {
-      // Pick a correct answer
-      pool.push(correctOnes[Math.floor(Math.random() * correctOnes.length)]);
-    } else {
-      // Generate an incorrect answer
-      let fakeNum;
-      let isCorrect = true;
-      let attempts = 0;
+  for (let i = 0; i < 3; i++) {
+    let fakeNum;
+    let isUnavailable = true;
+    let attempts = 0;
 
-      while (isCorrect && attempts < 20) {
-        attempts++;
-        if (problem.type === 'divisor') {
-          // Divisors: Pick random numbers near target but not divisors
-          fakeNum = Math.floor(Math.random() * (problem.targetNum - 2)) + 2;
-          isCorrect = problem.targetNum % fakeNum === 0;
-        } else if (problem.type === 'multiple') {
-          // Multiples: Pick random numbers that aren't multiples
-          fakeNum = Math.floor(Math.random() * (problem.targetNum * 6)) + 2;
-          isCorrect = fakeNum % problem.targetNum === 0;
-        } else if (problem.type === 'relation') {
-          // Relation: Pick numbers that are not b or c
-          fakeNum = Math.floor(Math.random() * 20) + 2;
-          isCorrect = problem.options.includes(fakeNum);
-        } else {
-          // GCD/LCM: Just random number offset from target
-          const offset = (Math.random() < 0.5 ? -1 : 1) * (Math.floor(Math.random() * 8) + 1);
-          fakeNum = problem.targetNum + offset;
-          if (fakeNum <= 0) fakeNum = problem.targetNum + 3;
-          isCorrect = fakeNum === problem.targetNum;
-        }
+    while (isUnavailable && attempts < 20) {
+      attempts++;
+      if (problem.type === 'divisor') {
+        fakeNum = Math.floor(Math.random() * Math.max(1, problem.targetNum - 2)) + 2;
+      } else if (problem.type === 'multiple') {
+        fakeNum = Math.floor(Math.random() * (problem.targetNum * 6)) + 2;
+      } else if (problem.type === 'relation') {
+        fakeNum = Math.floor(Math.random() * 20) + 2;
+      } else {
+        const offset = (Math.random() < 0.5 ? -1 : 1) * (Math.floor(Math.random() * 8) + 1);
+        fakeNum = Math.max(1, problem.targetNum + offset);
       }
-      pool.push(fakeNum);
+      isUnavailable = problem.checkAnswer(fakeNum) || pool.includes(fakeNum);
     }
+
+    if (isUnavailable) {
+      fakeNum = 1;
+      while (problem.checkAnswer(fakeNum) || pool.includes(fakeNum)) fakeNum++;
+    }
+    pool.push(fakeNum);
   }
 
   return pool;
+}
+
+export function getNextNumberDrop(problem) {
+  if (!problem) return null;
+
+  const pool = getRandomNumberPool(problem);
+  const correctCandidates = pool.filter(value => problem.checkAnswer(value));
+  const wrongCandidates = pool.filter(value => !problem.checkAnswer(value));
+  let state = answerDropStates.get(problem);
+
+  if (!state) {
+    state = { dropsUntilCorrect: Math.floor(Math.random() * 4) };
+    answerDropStates.set(problem, state);
+  }
+
+  const shouldDropCorrect = state.dropsUntilCorrect === 0 || wrongCandidates.length === 0;
+  const candidates = shouldDropCorrect ? correctCandidates : wrongCandidates;
+  const availableCandidates = candidates.length > 0 ? candidates : pool;
+  const selected = availableCandidates[Math.floor(Math.random() * availableCandidates.length)];
+
+  state.dropsUntilCorrect = shouldDropCorrect ? 3 : state.dropsUntilCorrect - 1;
+  return selected;
 }
 
 // Generates evaluation questions for the review sheet popup
@@ -575,6 +577,9 @@ function getSimilarQuestionsLegacy(wrongAreas) {
 }
 
 export function getSimilarQuestions(wrongAreas) {
+  const curriculumQuestions = generateCurriculumReviewQuestions(wrongAreas);
+  if (curriculumQuestions) return curriculumQuestions;
+
   if (isCustomMode()) {
     const quizData = getCustomQuizData();
     const questions = [];

@@ -1,8 +1,25 @@
 import { getStatValue } from './shop.js';
 import { isCustomMode } from './mathEngine.js';
+import { getUnitLabels, renderLearningReport } from './learningReport.js';
+
+let certificateResizeHandlerBound = false;
+
+function resetCertificateScroll(certScreen) {
+  certScreen.scrollTop = 0;
+  certScreen.scrollLeft = 0;
+}
+
+function bindCertificateResizeReset(certScreen) {
+  if (certificateResizeHandlerBound) return;
+  certificateResizeHandlerBound = true;
+  window.addEventListener('resize', () => {
+    if (certScreen.classList.contains('hidden')) return;
+    requestAnimationFrame(() => resetCertificateScroll(certScreen));
+  });
+}
 
 // Draws a 5-axis Radar Chart for math areas performance analysis
-export function drawRadarChart(correctAnswers, totalAnswers) {
+export function drawRadarChart(correctAnswers, totalAnswers, player = null) {
   const canvas = document.getElementById("certChartCanvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -14,9 +31,7 @@ export function drawRadarChart(correctAnswers, totalAnswers) {
   const centerY = canvas.height / 2;
   const radius = 80;
   
-  const labels = isCustomMode()
-    ? ["단어 매칭", "카테고리 분류", "순발력", "집중력", "정확도"]
-    : ["약수", "배수", "관계", "공약수", "공배수"];
+  const labels = getUnitLabels(player, isCustomMode());
   const numAxes = labels.length;
 
   // Calculate scores (default to 60% if no questions answered yet to prevent empty graphs)
@@ -95,8 +110,11 @@ export function drawRadarChart(correctAnswers, totalAnswers) {
 }
 
 // Fills in name, statistics, radar charts, and triggers UI display
-export function showCertificate(player, correctAnswers, totalAnswers, finalStage = 50) {
-  document.getElementById("certScreen").classList.remove("hidden");
+export function showCertificate(player, correctAnswers, totalAnswers, wrongQuestionStats = {}, finalStage = 50) {
+  const certScreen = document.getElementById("certScreen");
+  certScreen.classList.remove("hidden");
+  resetCertificateScroll(certScreen);
+  bindCertificateResizeReset(certScreen);
   document.getElementById("certNameText").innerText = player.name;
   document.getElementById("certStageText").innerText = `${finalStage} STAGE`;
 
@@ -133,7 +151,14 @@ export function showCertificate(player, correctAnswers, totalAnswers, finalStage
   document.getElementById("certNoText").innerText = certNo;
 
   // Draw Chart
-  drawRadarChart(correctAnswers, totalAnswers);
+  drawRadarChart(correctAnswers, totalAnswers, player);
+  renderLearningReport({
+    player,
+    correctAnswers,
+    totalAnswers,
+    wrongQuestionStats,
+    customMode: isCustomMode()
+  });
 
   // Set Date
   const dateObj = new Date();
@@ -145,13 +170,13 @@ export function showCertificate(player, correctAnswers, totalAnswers, finalStage
   const commentElement = document.getElementById("certCommentText");
 
   // Determine strengths and weaknesses
-  const labels = ["", "약수", "배수", "관계", "공약수", "공배수"];
+  const labels = ["", ...getUnitLabels(player, isCustomMode())];
   let bestAreaIdx = 1;
   let worstAreaIdx = 1;
   let maxRate = -1;
   let minRate = 2;
 
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i < labels.length; i++) {
     const correct = correctAnswers[i] || 0;
     const total = totalAnswers[i] || 0;
     const rate = total > 0 ? correct / total : 0.6;
@@ -167,7 +192,7 @@ export function showCertificate(player, correctAnswers, totalAnswers, finalStage
 
   // Handle equal edge cases
   if (bestAreaIdx === worstAreaIdx) {
-    worstAreaIdx = (bestAreaIdx % 5) + 1;
+    worstAreaIdx = (bestAreaIdx % (labels.length - 1)) + 1;
   }
 
   const strengthTexts = {
@@ -194,7 +219,11 @@ export function showCertificate(player, correctAnswers, totalAnswers, finalStage
     5: "최종 보스의 차원 융합 수학 기믹에 훌륭하게 대처한 역량이 돋보입니다. 수료 이후 중학교 1학년 소인수분해 과정으로 자연스럽게 연계 학습을 권장합니다."
   };
 
-  if (isCustomMode()) {
+  if (['4-1', '5-1', '6-1'].includes(player.curriculum)) {
+    strengthElement.innerText = `${labels[bestAreaIdx]} 단원의 정답률이 가장 높습니다. 개념 이해와 문제 해결 속도가 안정적입니다.`;
+    weaknessElement.innerText = `${labels[worstAreaIdx]} 단원의 오답을 시험지로 다시 풀어보며 풀이 과정을 점검해 보세요.`;
+    commentElement.innerText = "단원별 기록을 바탕으로 자주 틀린 문제부터 복습하면 학습 효과를 높일 수 있습니다.";
+  } else if (isCustomMode()) {
     strengthElement.innerText = "다양한 교과 단어와 카테고리의 관계를 빠르고 정확하게 분석해내는 능력이 탁월합니다.";
     weaknessElement.innerText = "특정 단어들이 어떤 분류에 속하는지 헷갈리지 않도록 복습을 통한 보완 학습을 추천합니다.";
     commentElement.innerText = "특공대의 정식 수료원으로서, 교과 퀴즈의 다양한 함정을 훌륭하게 극복하고 지혜롭게 문제를 해결한 점을 높이 칭찬합니다. 앞으로의 다른 심화 과정도 훌륭히 수행할 준비가 되었습니다!";
@@ -203,6 +232,10 @@ export function showCertificate(player, correctAnswers, totalAnswers, finalStage
     weaknessElement.innerText = weaknessTexts[worstAreaIdx];
     commentElement.innerText = commentTexts[bestAreaIdx];
   }
+
+  requestAnimationFrame(() => {
+    resetCertificateScroll(certScreen);
+  });
 }
 
 // Convert HTML area to Canvas and download as PNG image file

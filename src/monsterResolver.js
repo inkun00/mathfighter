@@ -8,7 +8,11 @@ export function resolveMonsterProjectileUpdates({
   onPlayerDeath = () => {}
 }) {
   projectiles.forEach(projectile => {
-    projectile.update(worldWidth, worldHeight);
+    if (player) {
+      projectile.update(worldWidth, worldHeight, { x: player.x, y: player.y });
+    } else {
+      projectile.update(worldWidth, worldHeight);
+    }
     if (!player || !circlesOverlap(player, projectile)) return;
 
     player.takeDamage(projectile.dmg);

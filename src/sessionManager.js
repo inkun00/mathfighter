@@ -1,4 +1,5 @@
 import { FINAL_STAGE, PROBLEM_DURATION, REGULAR_STAGE_DURATION } from './stageRules.js';
+import { normalizeWrongQuestionStats } from './learningReport.js';
 
 export const ACTIVE_SESSION_KEY = 'math_fighter_active_session';
 export const SESSION_SCHEMA_VERSION = 1;
@@ -11,7 +12,7 @@ function getStorage(storage) {
 }
 
 function normalizeStats(stats) {
-  const fallback = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const fallback = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   if (!stats || typeof stats !== 'object') return fallback;
   return { ...fallback, ...stats };
 }
@@ -28,13 +29,17 @@ function normalizeSession(parsed) {
     ...parsed,
     schemaVersion: SESSION_SCHEMA_VERSION,
     currentStage: Math.floor(currentStage),
-    stageTimer: Number.isFinite(parsed.stageTimer) ? parsed.stageTimer : REGULAR_STAGE_DURATION,
+    stageTimer: Number.isFinite(parsed.stageTimer)
+      ? Math.max(0, Math.min(parsed.stageTimer, REGULAR_STAGE_DURATION))
+      : REGULAR_STAGE_DURATION,
     problemTimer: Number.isFinite(parsed.problemTimer) ? parsed.problemTimer : PROBLEM_DURATION,
     brainTrainingCompletedStages: Array.isArray(parsed.brainTrainingCompletedStages)
       ? parsed.brainTrainingCompletedStages
       : [],
     correctAnswers: normalizeStats(parsed.correctAnswers),
     totalAnswers: normalizeStats(parsed.totalAnswers),
+    wrongQuestionStats: normalizeWrongQuestionStats(parsed.wrongQuestionStats),
+    curriculumQuestionBankState: parsed.curriculumQuestionBankState || null,
     combo: Number.isFinite(parsed.combo) ? parsed.combo : 0,
     problemProgress: Number.isFinite(parsed.problemProgress) ? parsed.problemProgress : 0,
     monsters: Array.isArray(parsed.monsters) ? parsed.monsters.slice(0, MAX_SAVED_MONSTERS) : []
@@ -51,6 +56,8 @@ export function createSessionSnapshot({
   brainTrainingCompletedStages,
   correctAnswers,
   totalAnswers,
+  wrongQuestionStats,
+  curriculumQuestionBankState,
   combo,
   customQuizData,
   currentProblem,
@@ -71,6 +78,8 @@ export function createSessionSnapshot({
     brainTrainingCompletedStages: [...brainTrainingCompletedStages],
     correctAnswers,
     totalAnswers,
+    wrongQuestionStats: normalizeWrongQuestionStats(wrongQuestionStats),
+    curriculumQuestionBankState: curriculumQuestionBankState || null,
     combo,
     customQuizData,
     currentProblem: currentProblem ? {
@@ -106,6 +115,8 @@ export function createSessionSnapshot({
     player: {
       name: player.name,
       gender: player.gender,
+      grade: player.grade,
+      curriculum: player.curriculum,
       level: player.level,
       exp: player.exp,
       nextLevelExp: player.nextLevelExp,

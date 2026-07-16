@@ -191,7 +191,7 @@ body, html {
   text-align: center;
 }
 
-#playerNameInput, #padletUrlInput {
+#playerNameInput, #playerGradeSelect, #padletUrlInput {
   width: 100%;
   background: rgba(4, 2, 14, 0.72);
   border: 2px solid rgba(0, 255, 255, 0.72);
@@ -204,8 +204,17 @@ body, html {
   box-shadow: inset 0 0 12px rgba(0, 255, 255, 0.12), 0 0 14px rgba(160, 32, 240, 0.22);
 }
 
-#playerNameInput:focus, #padletUrlInput:focus {
+#playerNameInput:focus, #playerGradeSelect:focus, #padletUrlInput:focus {
   border-color: var(--color-secondary);
+}
+
+#playerGradeSelect {
+  cursor: pointer;
+}
+
+#playerGradeSelect option {
+  background: #0c081c;
+  color: #fff;
 }
 
 .pixel-btn.secondary-btn {
@@ -1148,6 +1157,16 @@ body, html {
 #certScreen {
   background: radial-gradient(circle, #221a10 0%, #0c0804 100%);
   overflow-y: auto;
+  justify-content: flex-start;
+  align-items: center;
+  min-height: 0;
+  scroll-padding-top: 20px;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+}
+
+#certScreen > * {
+  flex: 0 0 auto;
 }
 
 .cert-paper {
@@ -1248,6 +1267,92 @@ body, html {
   display: flex;
   justify-content: center;
   margin-bottom: 25px;
+  width: 100%;
+  overflow: visible;
+}
+
+#certChartCanvas {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+}
+
+.learning-report-section {
+  width: 100%;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.learning-report-section h2 {
+  margin-bottom: 14px;
+  color: #4f3d29;
+  font-size: 20px;
+  text-align: center;
+}
+
+.learning-report-section h3 {
+  margin: 20px 0 10px;
+  color: #614d33;
+  font-size: 14px;
+}
+
+.unit-accuracy-list {
+  display: grid;
+  gap: 9px;
+}
+
+.unit-accuracy-row {
+  display: grid;
+  grid-template-columns: minmax(105px, 1.4fr) minmax(120px, 3fr) 48px 44px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.unit-rate-track {
+  height: 10px;
+  overflow: hidden;
+  background: #e5e0d7;
+  border: 1px solid #d0c6b8;
+}
+
+.unit-rate-track span {
+  display: block;
+  height: 100%;
+  background: #2e8b57;
+}
+
+.unit-accuracy-row strong,
+.unit-accuracy-row small {
+  text-align: right;
+}
+
+.frequent-wrong-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.frequent-wrong-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 12px;
+  border-left: 3px solid #b83c3c;
+  background: #f8f2ef;
+  font-size: 12px;
+}
+
+.frequent-wrong-list li strong {
+  flex: 0 0 auto;
+  color: #a22d2d;
+}
+
+.frequent-wrong-list .no-wrong-answer {
+  border-left-color: #2e8b57;
+  color: #42614d;
 }
 
 .cert-feedback {
@@ -1308,6 +1413,30 @@ body, html {
 
 .cert-actions button {
   flex: 1;
+}
+
+@media (max-width: 620px) {
+  #certScreen {
+    padding: 12px;
+    scroll-padding-top: 12px;
+  }
+
+  .cert-paper {
+    padding: 28px 16px;
+    border-width: 8px;
+  }
+
+  .unit-accuracy-row {
+    grid-template-columns: minmax(90px, 1.2fr) minmax(80px, 2fr) 42px;
+  }
+
+  .unit-accuracy-row small {
+    display: none;
+  }
+
+  .cert-actions {
+    flex-direction: column;
+  }
 }
 
 .exit-btn {

@@ -4,6 +4,7 @@ import {
   createBossGimmickProblem,
   resolveBossUpdate
 } from '../src/bossResolver.js';
+import { applyCurriculumToPlayer } from '../src/curriculumProblems.js';
 
 function createPlayer(overrides = {}) {
   return {
@@ -134,6 +135,65 @@ test('creates the stage 10 divisor problem', () => {
   assert.deepEqual(problem.options, [2, 3, 4, 6, 9, 12, 18]);
   assert.equal(problem.checkAnswer(9), true);
   assert.equal(problem.checkAnswer(5), false);
+});
+
+test('uses one stable grade 4 semester 1 problem for collectible boss gimmicks', () => {
+  applyCurriculumToPlayer({}, '4-1');
+  const boss = {
+    stage: 10,
+    isGimmickActive: true,
+    lastGimmickTriggerTime: 456,
+    chaosCycleType: 'divisor',
+    gimmickTargetVal: 36,
+    gimmickRequiredCount: 3
+  };
+  const currentProblem = { area: 2 };
+  const first = createBossGimmickProblem(boss, currentProblem, '4-1');
+  const second = createBossGimmickProblem(boss, currentProblem, '4-1');
+
+  assert.equal(first, second);
+  assert.equal(first.type, 'curriculum_choice');
+  assert.equal(first.requiredCount, 1);
+  assert.equal(boss.gimmickRequiredCount, 1);
+  assert.equal(boss.gimmickPrompt, first.text);
+  assert.equal(first.checkAnswer(first.options[0]), true);
+  assert.ok(first.wrongAnswers.every(answer => !first.checkAnswer(answer)));
+
+  applyCurriculumToPlayer({}, '5-1');
+});
+
+test('uses the grade 5 semester 1 bank for collectible boss gimmicks', () => {
+  applyCurriculumToPlayer({}, '5-1');
+  const boss = {
+    stage: 10,
+    isGimmickActive: true,
+    lastGimmickTriggerTime: 2,
+    chaosCycleType: 'divisor',
+    gimmickTargetVal: 18,
+    gimmickRequiredCount: 1
+  };
+
+  const problem = createBossGimmickProblem(boss, { area: 1 }, '5-1');
+  assert.equal(problem.type, 'curriculum_choice');
+  assert.match(problem.bankQuestionId, /^g5s1-/);
+  assert.equal(problem.checkAnswer(problem.options[0]), true);
+});
+
+test('uses the grade 6 semester 1 bank for collectible boss gimmicks', () => {
+  applyCurriculumToPlayer({}, '6-1');
+  const boss = {
+    stage: 10,
+    isGimmickActive: true,
+    lastGimmickTriggerTime: 3,
+    chaosCycleType: 'divisor',
+    gimmickTargetVal: 18,
+    gimmickRequiredCount: 1
+  };
+
+  const problem = createBossGimmickProblem(boss, { area: 1 }, '6-1');
+  assert.equal(problem.type, 'curriculum_choice');
+  assert.match(problem.bankQuestionId, /^g6s1-/);
+  assert.equal(problem.checkAnswer(problem.options[0]), true);
 });
 
 test('creates the stage 20 positive-multiple problem', () => {

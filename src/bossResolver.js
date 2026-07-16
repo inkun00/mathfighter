@@ -1,3 +1,31 @@
+import { generateCurriculumProblem } from './curriculumProblems.js';
+
+const CURRICULUM_GIMMICK_STAGES = new Set([10, 20, 40, 50]);
+const QUESTION_BANK_CURRICULA = new Set(['4-1', '5-1', '6-1']);
+
+function createCurriculumBossProblem(boss, curriculum) {
+  if (!QUESTION_BANK_CURRICULA.has(curriculum) || !CURRICULUM_GIMMICK_STAGES.has(boss.stage)) return null;
+
+  const gimmickKey = `${boss.stage}-${boss.lastGimmickTriggerTime}`;
+  if (boss.curriculumGimmickProblem?.gimmickKey === gimmickKey) {
+    return boss.curriculumGimmickProblem;
+  }
+
+  const generated = generateCurriculumProblem(curriculum);
+  if (!generated) return null;
+
+  const problem = {
+    ...generated,
+    id: `boss-curriculum-${gimmickKey}`,
+    requiredCount: 1,
+    gimmickKey
+  };
+  boss.curriculumGimmickProblem = problem;
+  boss.gimmickRequiredCount = 1;
+  boss.gimmickPrompt = problem.text;
+  return problem;
+}
+
 function getBossProblemOptions(boss) {
   if (boss.stage === 10) return { type: 'divisor', options: [2, 3, 4, 6, 9, 12, 18] };
   if (boss.stage === 20) return { type: 'multiple', options: [7, 14, 21, 28, 35, 42] };
@@ -34,8 +62,11 @@ function checkBossAnswer(boss, value) {
   return false;
 }
 
-export function createBossGimmickProblem(boss, currentProblem) {
+export function createBossGimmickProblem(boss, currentProblem, curriculum = null) {
   if (!boss?.isGimmickActive) return currentProblem;
+
+  const curriculumProblem = createCurriculumBossProblem(boss, curriculum);
+  if (curriculumProblem) return curriculumProblem;
 
   const { type, options } = getBossProblemOptions(boss);
   return {

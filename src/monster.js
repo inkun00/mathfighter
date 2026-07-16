@@ -1,4 +1,12 @@
-import { getRandomNumberPool } from './mathEngine.js';
+import { getNextNumberDrop } from './mathEngine.js';
+import { MONSTER_ROSTER } from './monsterRoster.js';
+import {
+  createEnemyProjectileVolley,
+  getEnemyProjectileProfile,
+  MonsterProjectile
+} from './enemyProjectiles.js';
+
+export { MonsterProjectile } from './enemyProjectiles.js';
 
 const ENEMY_STAT_NORMALIZER = 0.9;
 
@@ -110,192 +118,6 @@ export class DropItem {
     ctx.restore();
   }
 }
-
-// Enemy Projectile representing projectiles thrown by ranger monsters
-export class MonsterProjectile {
-  constructor(x, y, targetX, targetY, dmg, options = {}) {
-    this.x = x;
-    this.y = y;
-    this.dmg = dmg;
-    this.speed = (options.speed || 3.5) * ENEMY_STAT_NORMALIZER;
-    this.radius = options.radius || 6;
-    this.color = options.color || '#ffa000';
-    this.isDead = false;
-
-    const dx = targetX - x;
-    const dy = targetY - y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    this.vx = dist > 0 ? (dx / dist) * this.speed : 0;
-    this.vy = dist > 0 ? (dy / dist) * this.speed : this.speed;
-  }
-
-  update(canvasWidth, canvasHeight) {
-    this.x += this.vx;
-    this.y += this.vy;
-
-    // Boundary check
-    if (this.x < 0 || this.x > canvasWidth || this.y < 0 || this.y > canvasHeight) {
-      this.isDead = true;
-    }
-  }
-
-  draw(ctx) {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
-const MONSTER_ROSTER = [
-  {
-    id: 'acid_slime',
-    name: 'Acid Slime',
-    family: 'slime',
-    sheet: '/assets/monsters/monster_acid_slime_sheet.png',
-    pattern: 'debuff',
-    rank: 1,
-    speed: 1.25,
-    maxHp: 34,
-    atk: 9,
-    color: '#8cff4a',
-    spriteSize: 58,
-    radius: 15
-  },
-  {
-    id: 'frost_slime',
-    name: 'Frost Slime',
-    family: 'slime',
-    sheet: '/assets/monsters/monster_frost_slime_sheet.png',
-    pattern: 'sniper',
-    rank: 2,
-    speed: 1.05,
-    maxHp: 58,
-    atk: 13,
-    color: '#8ee8ff',
-    spriteSize: 60,
-    radius: 16
-  },
-  {
-    id: 'void_slime',
-    name: 'Void Slime',
-    family: 'slime',
-    sheet: '/assets/monsters/monster_void_slime_sheet.png',
-    pattern: 'zigzag',
-    rank: 3,
-    speed: 1.65,
-    maxHp: 82,
-    atk: 18,
-    color: '#9b5cff',
-    spriteSize: 64,
-    radius: 17
-  },
-  {
-    id: 'magma_slime',
-    name: 'Magma Slime',
-    family: 'slime',
-    sheet: '/assets/monsters/monster_magma_slime_sheet.png',
-    pattern: 'bomb',
-    rank: 4,
-    speed: 1.25,
-    maxHp: 120,
-    atk: 30,
-    color: '#ff6a2a',
-    spriteSize: 68,
-    radius: 19,
-    isElite: true
-  },
-  {
-    id: 'storm_slime',
-    name: 'Storm Slime',
-    family: 'slime',
-    sheet: '/assets/monsters/monster_storm_slime_sheet.png',
-    pattern: 'orbit',
-    rank: 5,
-    speed: 1.45,
-    maxHp: 170,
-    atk: 30,
-    color: '#5ac8ff',
-    spriteSize: 72,
-    radius: 21,
-    isElite: true
-  },
-  {
-    id: 'grunt_zombie',
-    name: 'Grunt Zombie',
-    family: 'zombie',
-    sheet: '/assets/monsters/monster_grunt_zombie_sheet.png',
-    pattern: 'charge',
-    rank: 1,
-    speed: 1.15,
-    maxHp: 48,
-    atk: 12,
-    color: '#8fb36a',
-    spriteSize: 64,
-    radius: 16
-  },
-  {
-    id: 'plague_zombie',
-    name: 'Plague Zombie',
-    family: 'zombie',
-    sheet: '/assets/monsters/monster_plague_zombie_sheet.png',
-    pattern: 'regen',
-    rank: 2,
-    speed: 0.95,
-    maxHp: 90,
-    atk: 16,
-    color: '#b0d957',
-    spriteSize: 66,
-    radius: 17
-  },
-  {
-    id: 'runner_zombie',
-    name: 'Runner Zombie',
-    family: 'zombie',
-    sheet: '/assets/monsters/monster_runner_zombie_sheet.png',
-    pattern: 'rush',
-    rank: 3,
-    speed: 1.9,
-    maxHp: 78,
-    atk: 20,
-    color: '#ff9a38',
-    spriteSize: 66,
-    radius: 17
-  },
-  {
-    id: 'armored_zombie',
-    name: 'Armored Zombie',
-    family: 'zombie',
-    sheet: '/assets/monsters/monster_armored_zombie_sheet.png',
-    pattern: 'shield',
-    rank: 4,
-    speed: 0.85,
-    maxHp: 210,
-    atk: 28,
-    color: '#6fb2d8',
-    spriteSize: 76,
-    radius: 22,
-    isElite: true
-  },
-  {
-    id: 'berserker_zombie',
-    name: 'Berserker Zombie',
-    family: 'zombie',
-    sheet: '/assets/monsters/monster_berserker_zombie_sheet.png',
-    pattern: 'rush',
-    rank: 5,
-    speed: 1.55,
-    maxHp: 260,
-    atk: 40,
-    color: '#ff2d5f',
-    spriteSize: 80,
-    radius: 24,
-    isElite: true
-  }
-];
 
 function getStageMonsterPool(stage) {
   const stageRank = Math.min(5, Math.max(1, Math.floor((stage + 4) / 8)));
@@ -481,6 +303,8 @@ export class Monster {
 
     if (this.isHitFlash > 0) this.isHitFlash--;
 
+    const projectileProfile = getEnemyProjectileProfile(this.templateId);
+
     if (this.pattern === 'regen' && now - this.lastRegenTime >= 1000) {
       this.hp = Math.min(this.maxHp, this.hp + Math.max(2, Math.floor(this.maxHp * 0.025)));
       this.lastRegenTime = now;
@@ -518,32 +342,32 @@ export class Monster {
       this.lastActionTime = now;
     }
 
-    if (this.pattern === 'sniper' && dist < 360 && dist > 120) {
-      if (now - this.lastActionTime >= 2600 * this.actionCooldownScale) {
-        monsterProjectiles.push(new MonsterProjectile(this.x, this.y, playerPos.x, playerPos.y, this.atk * 1.25, {
-          speed: 5.2 * this.projectileSpeedScale,
-          radius: 5,
-          color: '#8ee8ff'
-        }));
+    if (
+      this.pattern === 'sniper' && projectileProfile &&
+      dist < projectileProfile.rangeMax && dist > projectileProfile.rangeMin
+    ) {
+      if (now - this.lastActionTime >= projectileProfile.cooldown * this.actionCooldownScale) {
+        monsterProjectiles.push(...createEnemyProjectileVolley(
+          this.templateId,
+          this,
+          playerPos,
+          this.atk,
+          this.projectileSpeedScale
+        ));
         this.lastActionTime = now;
       }
       return;
     }
 
-    if (this.pattern === 'orbit' && dist < 260) {
-      if (now - this.lastActionTime >= 2400 * this.actionCooldownScale) {
-        const baseAngle = Math.atan2(dy, dx);
-        for (let i = -1; i <= 1; i++) {
-          const angle = baseAngle + i * 0.45;
-          monsterProjectiles.push(new MonsterProjectile(
-            this.x,
-            this.y,
-            this.x + Math.cos(angle) * 100,
-            this.y + Math.sin(angle) * 100,
-            this.atk,
-            { speed: 4.2 * this.projectileSpeedScale, radius: 7, color: '#5ac8ff' }
-          ));
-        }
+    if (this.pattern === 'orbit' && projectileProfile && dist < projectileProfile.rangeMax) {
+      if (now - this.lastActionTime >= projectileProfile.cooldown * this.actionCooldownScale) {
+        monsterProjectiles.push(...createEnemyProjectileVolley(
+          this.templateId,
+          this,
+          playerPos,
+          this.atk,
+          this.projectileSpeedScale
+        ));
         this.lastActionTime = now;
       }
     }
@@ -656,9 +480,7 @@ export class Monster {
 
     // 4. Drop Numbers (52% rate, increased by 30% from the previous 40%)
     if (problem && Math.random() < 0.52) {
-      const numbers = getRandomNumberPool(problem);
-      // Pick one randomly from pool
-      const selected = numbers[Math.floor(Math.random() * numbers.length)];
+      const selected = getNextNumberDrop(problem);
       dropItems.push(new DropItem(this.x, this.y, 'number', selected, selected.toString(), problem.id || null));
     }
   }

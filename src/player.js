@@ -7,12 +7,15 @@ import {
   getWeaponTierMultiplier,
   getWeaponVisualProfile
 } from './weaponProfiles.js';
+import { getWeaponAccentColor } from './weaponEffects.js';
 
 const projectileIconCache = new Map();
 const firePatchSheet = new Image();
 firePatchSheet.src = '/assets/effects/fire_patch_sheet.png';
 const electromagneticLaserSheet = new Image();
 electromagneticLaserSheet.src = '/assets/effects/electromagnetic_laser_beam.png';
+const electromagneticLaserSource = new Image();
+electromagneticLaserSource.src = '/assets/effects/electromagnetic_laser_source.png';
 
 function getProjectileIconImage(id) {
   if (!projectileIconCache.has(id)) {
@@ -26,6 +29,7 @@ function getProjectileIconImage(id) {
 const HOMING_BEHAVIORS = new Set(['homing', 'chain_lightning', 'missile_swarm']);
 const RAIL_BEHAVIORS = new Set(['rail_laser', 'plasma_rail']);
 const STATIONARY_BEHAVIORS = new Set(['mine', 'fire_patch', 'gravity_well', 'rail_laser', 'plasma_rail']);
+const SPINNING_BEHAVIORS = new Set(['boomerang', 'orbit', 'shockwave', 'nova']);
 
 function getWeaponLevelBonus(id) {
   const level = getWeaponLevel(id);
@@ -94,7 +98,11 @@ export class Projectile {
       this.player = player;
       this.id = weapon.id;
       this.statusEffect = options.statusEffect || getWeaponStatusEffect(weapon.id);
-      this.isParabolic = Boolean(weapon.name && weapon.name.includes("투척기"));
+      this.effectVariant = options.effectVariant || null;
+      this.visualProfile = getWeaponVisualProfile(weapon.id);
+      this.trailPositions = [];
+      this.lastTrailSampleTime = 0;
+      this.isParabolic = this.behavior === 'throw_fire';
       this.z = 0;
 
       // Homing setup
@@ -147,6 +155,19 @@ export class Projectile {
       if (elapsed > this.lifeTime) {
         this.isDead = true;
         return;
+      }
+
+      if (
+        this.visualProfile.trailCount > 0 &&
+        !STATIONARY_BEHAVIORS.has(this.behavior) &&
+        Date.now() - this.lastTrailSampleTime >= 24
+      ) {
+        this.trailPositions.push({ x: this.x, y: this.y, z: this.z || 0 });
+        const maxTrailPoints = this.visualProfile.trailCount * 2 + 3;
+        if (this.trailPositions.length > maxTrailPoints) {
+          this.trailPositions.splice(0, this.trailPositions.length - maxTrailPoints);
+        }
+        this.lastTrailSampleTime = Date.now();
       }
 
       if (STATIONARY_BEHAVIORS.has(this.behavior)) {
@@ -253,6 +274,7 @@ export class Projectile {
     this.angle = 0;
     this.z = 0;
     this.isParabolic = false;
+    this.trailPositions = [];
   }
 
   canApplyAreaTick(now) {
@@ -262,7 +284,7 @@ export class Projectile {
   }
 
   draw(ctx) {
-    const visualProfile = getWeaponVisualProfile(this.id);
+    const visualProfile = this.visualProfile || getWeaponVisualProfile(this.id);
 
     // Tesla Fusion Gun (ID 23) special lightning drawing: Character's body to target monster
     if (this.id === 23) {
@@ -333,6 +355,23 @@ export class Projectile {
 
     ctx.save();
 
+    if (this.trailPositions.length > 0) {
+      const trailColor = getWeaponAccentColor(this.id, this.behavior, this.effectVariant);
+      ctx.save();
+      ctx.fillStyle = trailColor;
+      ctx.shadowColor = trailColor;
+      ctx.shadowBlur = visualProfile.glowBlur * 0.55;
+      this.trailPositions.forEach((point, index) => {
+        const progress = (index + 1) / this.trailPositions.length;
+        ctx.globalAlpha = progress * 0.42;
+        const size = Math.max(1.5, this.radius * progress * 0.72);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y - point.z, size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+
     // 1. Draw shadow on the ground if parabolic
     if (this.isParabolic && this.z > 0) {
       ctx.save();
@@ -348,6 +387,10 @@ export class Projectile {
     // 2. Translate coordinates and apply z-height Y offset
     ctx.translate(this.x, this.y - (this.z || 0));
     ctx.rotate(this.angle);
+    if (SPINNING_BEHAVIORS.has(this.behavior) || this.id === 5) {
+      const spinDirection = this.isReturning ? -1 : 1;
+      ctx.rotate((Date.now() - this.createdTime) * 0.012 * spinDirection);
+    }
 
     if (this.behavior === 'gravity_well') {
       const elapsed = Date.now() - this.createdTime;
@@ -416,6 +459,12 @@ export class Projectile {
         ctx.stroke();
       }
 
+      if (electromagneticLaserSource.complete && electromagneticLaserSource.naturalWidth !== 0) {
+        const sourceSize = beamHeight * (this.behavior === 'plasma_rail' ? 2.6 : 2.1);
+        ctx.globalAlpha = Math.max(0.45, alpha);
+        ctx.drawImage(electromagneticLaserSource, -sourceSize * 0.5, -sourceSize * 0.5, sourceSize, sourceSize);
+      }
+
       ctx.restore();
       return;
     }
@@ -463,28 +512,28 @@ export class Projectile {
 
     const iconImg = getProjectileIconImage(this.id);
     if (iconImg.complete && iconImg.naturalWidth !== 0) {
-      if (visualProfile.trailCount > 0 && !['mine', 'orbit'].includes(this.behavior)) {
-        ctx.fillStyle = visualProfile.color;
-        ctx.shadowColor = visualProfile.color;
-        ctx.shadowBlur = visualProfile.glowBlur * 0.65;
-        for (let i = visualProfile.trailCount; i >= 1; i--) {
-          ctx.globalAlpha = 0.08 + (visualProfile.trailCount - i) * 0.06;
-          ctx.beginPath();
-          ctx.arc(-i * (6 + visualProfile.rank), 0, Math.max(2, this.radius * (1 - i * 0.1)), 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
-      }
-
-      ctx.shadowColor = visualProfile.color;
+      const accentColor = getWeaponAccentColor(this.id, this.behavior, this.effectVariant);
+      ctx.shadowColor = accentColor;
       ctx.shadowBlur = visualProfile.glowBlur;
       const drawSize = this.behavior === 'mine'
         ? visualProfile.drawSize + 10
         : visualProfile.drawSize;
+      if (visualProfile.rank >= 5) {
+        const pulse = 1 + Math.sin((Date.now() - this.createdTime) / 70) * 0.06;
+        ctx.scale(pulse, pulse);
+      }
       ctx.drawImage(iconImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+      if (this.effectVariant) {
+        ctx.globalCompositeOperation = 'source-atop';
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = accentColor;
+        ctx.fillRect(-drawSize / 2, -drawSize / 2, drawSize, drawSize);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      }
       if (visualProfile.rank >= 4) {
         ctx.globalAlpha = 0.72;
-        ctx.strokeStyle = visualProfile.color;
+        ctx.strokeStyle = accentColor;
         ctx.lineWidth = Math.max(2, visualProfile.rank - 2);
         ctx.beginPath();
         ctx.arc(0, 0, drawSize * 0.62, 0, Math.PI * 2);
@@ -651,7 +700,7 @@ export class Player {
   }
 
   // Automatic weapon shoot routine
-  shoot(monsters, projectiles, boss = null) {
+  shoot(monsters, projectiles, boss = null, onWeaponFired = () => {}) {
     try {
       const weapons = getEquippedWeapons();
       const now = Date.now();
@@ -696,6 +745,7 @@ export class Player {
         }
 
         if (closest) {
+          const projectileStartCount = projectiles.length;
           // Spawn weapon shot projectile targeting closest monster
           const slotOffsets = weapons.length === 3 ? [-12, 0, 12] : [-8, 8];
           const xOffset = weapons.length > 1 ? slotOffsets[index] : 0;
@@ -753,7 +803,10 @@ export class Player {
                 speedMultiplier: 1.05,
                 statusEffect: behavior === 'elemental_burst'
                   ? elementalEffects[i % elementalEffects.length]
-                  : undefined
+                  : undefined,
+                effectVariant: behavior === 'elemental_burst'
+                  ? ['fire', 'gravity', 'electric'][i % 3]
+                  : null
               });
             }
           } else if (behavior === 'shockwave') {
@@ -820,6 +873,16 @@ export class Player {
               } : {});
             }
           }
+
+          onWeaponFired({
+            x: this.x + xOffset,
+            y: this.y,
+            targetX,
+            targetY,
+            weapon,
+            behavior,
+            projectileCount: projectiles.length - projectileStartCount
+          });
 
           this.lastShotTimes[slotKey] = now;
           this.lastShotTime = now;

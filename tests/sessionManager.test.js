@@ -101,10 +101,23 @@ test('save and load accept legacy sessions and normalize defaults', () => {
 
   assert.equal(loaded.schemaVersion, SESSION_SCHEMA_VERSION);
   assert.equal(loaded.currentStage, 2);
-  assert.equal(loaded.stageTimer, 90);
+  assert.equal(loaded.stageTimer, 70);
   assert.equal(loaded.problemTimer, 30);
   assert.deepEqual(loaded.monsters, []);
-  assert.deepEqual(loaded.correctAnswers, { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+  assert.deepEqual(loaded.correctAnswers, { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 });
+});
+
+test('caps older saved stage timers at the current regular-stage duration', () => {
+  const storage = createStorage();
+  const oldSession = {
+    gameState: 'play',
+    currentStage: 2,
+    stageTimer: 90,
+    player: createPlayer()
+  };
+
+  assert.equal(saveActiveSession(oldSession, storage), true);
+  assert.equal(loadActiveSession(storage).stageTimer, 70);
 });
 
 test('load removes corrupted or unsupported sessions', () => {

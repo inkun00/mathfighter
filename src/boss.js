@@ -57,6 +57,8 @@ export class Boss {
     this.gimmickTargetVal = 0;
     this.gimmickAnswerCount = 0; // Current count of correct actions
     this.gimmickRequiredCount = 1;
+    this.gimmickPrompt = '';
+    this.curriculumGimmickProblem = null;
     this.lastGimmickTriggerTime = Date.now();
     this.lastActionTime = 0;
 
@@ -204,6 +206,8 @@ export class Boss {
   triggerGimmick(playerPos, dropItems) {
     this.isGimmickActive = true;
     this.gimmickAnswerCount = 0;
+    this.gimmickPrompt = '';
+    this.curriculumGimmickProblem = null;
     this.lastGimmickTriggerTime = Date.now();
 
     if (this.stage === 10) {
@@ -373,7 +377,8 @@ export class Boss {
       ctx.textAlign = 'center';
       
       let alertMsg = "";
-      if (this.stage === 10) alertMsg = `[골렘 쉴드 작동: 36의 약수 수집! ${this.gimmickAnswerCount}/${this.gimmickRequiredCount}]`;
+      if (this.gimmickPrompt) alertMsg = `[4학년 1학기 정답 수집: ${this.gimmickAnswerCount}/${this.gimmickRequiredCount}]`;
+      else if (this.stage === 10) alertMsg = `[골렘 쉴드 작동: 36의 약수 수집! ${this.gimmickAnswerCount}/${this.gimmickRequiredCount}]`;
       else if (this.stage === 20) alertMsg = `[시한폭탄 작동: 7의 배수를 먹어 해체!]`;
       else if (this.stage === 30) alertMsg = `[레이저 난사: 12와 18의 공약수 발판 대피!]`;
       else if (this.stage === 40) alertMsg = `[차원 균열: 3과 4의 최소공배수 수집!]`;
