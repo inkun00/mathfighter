@@ -7,14 +7,15 @@ import {
   getEquippedWeapons, equipWeapon, recordWrongArea
 } from './shop.js';
 import { openBrainTrainingModal, openExamModal } from './exam.js';
-import { showCertificate, saveCertificate } from './certificate.js';
-import { loadCustomQuizFromPadletUrl } from './customQuiz.js';
+import { openCertificateBoard, showCertificate, saveCertificate } from './certificate.js';
+import { setupCustomGameControls } from './customGameController.js';
 import { createInputController } from './inputController.js';
 import {
   clearActiveSession,
   createSessionSnapshot,
   loadActiveSession,
-  saveActiveSession
+  saveActiveSession,
+  SESSION_AUTOSAVE_INTERVAL
 } from './sessionManager.js';
 import {
   PROBLEM_DURATION,
@@ -139,6 +140,9 @@ function initGameApp() {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('beforeunload', saveSessionSnapshot);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) saveSessionSnapshot();
+  });
 
   // Load persistence save
   loadState();
@@ -153,7 +157,8 @@ function initGameApp() {
 }
 
 function saveSessionSnapshot() {
-  if (!player || gameState === 'start' || gameState === 'cert') {
+  if (!player) return;
+  if (gameState === 'start' || gameState === 'cert') {
     clearActiveSession();
     return;
   }
@@ -512,95 +517,17 @@ function setupEventListeners() {
     loadStage(currentStage);
   });
 
-  // Custom Game Button - Show URL input modal
-  document.getElementById('customGameBtn').addEventListener('click', () => {
-    document.getElementById('customUrlModal').classList.remove('hidden');
-    document.getElementById('urlLoadError').innerText = "";
-
-    // Fill in last saved URL if exists
-    const savedUrl = localStorage.getItem('math_fighter_custom_quiz_url');
-    if (savedUrl) {
-      document.getElementById('padletUrlInput').value = savedUrl;
-    }
-
-    // Toggle saved game button visibility
-    const savedData = localStorage.getItem('math_fighter_custom_quiz_data');
-    const loadSavedBtn = document.getElementById('loadSavedCustomGameBtn');
-    if (savedData && loadSavedBtn) {
-      loadSavedBtn.style.display = 'block';
-    } else if (loadSavedBtn) {
-      loadSavedBtn.style.display = 'none';
-    }
+  document.getElementById('registerCertificateBtn').addEventListener('click', () => {
+    openCertificateBoard();
   });
 
-  // Close Custom Game Modal
-  document.getElementById('closeUrlModalBtn').addEventListener('click', () => {
-    document.getElementById('customUrlModal').classList.add('hidden');
-  });
-
-  // Load Saved Custom Game Action
-  document.getElementById('loadSavedCustomGameBtn').addEventListener('click', () => {
-    const savedData = localStorage.getItem('math_fighter_custom_quiz_data');
-    if (!savedData) return;
-    try {
-      const categories = JSON.parse(savedData);
+  setupCustomGameControls({
+    onStart: (categories, playerName) => {
       setCustomQuizData(categories);
-      document.getElementById('customUrlModal').classList.add('hidden');
-      
-      const nameInput = document.getElementById('playerNameInput');
-      const playerName = nameInput.value.trim() || "홍길동";
-      
       resetRunData();
       player = createRunPlayer(playerName);
       player.refreshStats();
       loadStage(1);
-    } catch (err) {
-      document.getElementById('urlLoadError').innerText = "오류: 저장된 퀴즈 데이터를 불러오지 못했습니다.";
-    }
-  });
-
-  // Go to Padlet Web Page
-  document.getElementById('gotoPadletBtn').addEventListener('click', () => {
-    window.open('https://padlet.com/inkun02/padlet-55n4tbvqcfhzoa99', '_blank');
-  });
-
-  // Load Custom Game Action
-  document.getElementById('loadCustomGameBtn').addEventListener('click', async () => {
-    const urlInput = document.getElementById('padletUrlInput');
-    const url = urlInput.value.trim();
-    const errorEl = document.getElementById('urlLoadError');
-    const loadBtn = document.getElementById('loadCustomGameBtn');
-
-    try {
-      errorEl.innerText = "문제를 구성하는 중입니다...";
-      loadBtn.disabled = true;
-
-      const categories = await loadCustomQuizFromPadletUrl(url);
-      setCustomQuizData(categories);
-
-      // Save custom game data & URL to localStorage
-      try {
-        localStorage.setItem('math_fighter_custom_quiz_data', JSON.stringify(categories));
-        localStorage.setItem('math_fighter_custom_quiz_url', url);
-      } catch (saveErr) {
-        console.warn("Failed to save custom quiz data to localStorage", saveErr);
-      }
-
-      document.getElementById('customUrlModal').classList.add('hidden');
-
-      // Start custom mode game
-      const nameInput = document.getElementById('playerNameInput');
-      const playerName = nameInput.value.trim() || "홍길동";
-      
-      resetRunData();
-      player = createRunPlayer(playerName);
-      player.refreshStats();
-      loadStage(1);
-
-    } catch (err) {
-      errorEl.innerText = `오류: ${err.message}`;
-    } finally {
-      loadBtn.disabled = false;
     }
   });
 
@@ -779,7 +706,7 @@ function gameLoop() {
   }
 
   const now = Date.now();
-  if (now - lastSessionSaveTime >= 1000) {
+  if (now - lastSessionSaveTime >= SESSION_AUTOSAVE_INTERVAL) {
     lastSessionSaveTime = now;
     saveSessionSnapshot();
   }

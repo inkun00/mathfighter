@@ -1,8 +1,24 @@
+import html2canvas from 'html2canvas';
 import { getStatValue } from './shop.js';
 import { isCustomMode } from './mathEngine.js';
 import { getUnitLabels, renderLearningReport } from './learningReport.js';
 
 let certificateResizeHandlerBound = false;
+export const CERTIFICATE_BOARD_URL = 'https://samboard.vivasam.com/studentEntry/?brdId=brd-0QR3C3WJN6RYH';
+
+export function openCertificateBoard(openWindow = window.open) {
+  return openWindow(CERTIFICATE_BOARD_URL, '_blank', 'noopener,noreferrer');
+}
+
+export function getAcademicGrade({ level = 1, finalStage = 1, customMode = false }) {
+  const modePrefix = customMode ? '분류' : '수학';
+  if (finalStage >= 45) return `${modePrefix} 슈퍼스타`;
+  if (level >= 45) return `${modePrefix} 엠페러`;
+  if (Math.max(level, finalStage) >= 30) return `${modePrefix} 마스터`;
+  if (level >= 15) return `${modePrefix} 특공대장`;
+  if (finalStage >= 15) return `${modePrefix} 특공대`;
+  return '예비 특공대';
+}
 
 function resetCertificateScroll(certScreen) {
   certScreen.scrollTop = 0;
@@ -134,16 +150,11 @@ export function showCertificate(player, correctAnswers, totalAnswers, wrongQuest
   const finalScore = finalStage * 1000 + player.level * 1500 + Math.floor(player.gold * 0.5);
   document.getElementById("certScoreText").innerText = finalScore.toLocaleString();
 
-  // Evaluation Grades
-  const modePrefix = isCustomMode() ? "분류" : "수학";
-  let grade = "예비 특공대원";
-  if (player.level >= 45) grade = `${modePrefix} 엠페러`;
-  else if (player.level >= 30) grade = `${modePrefix} 마스터`;
-  else if (player.level >= 15) grade = `${modePrefix} 특공대장`;
-  if (finalStage >= 45) grade = `${modePrefix} 슈퍼스타`;
-  else if (finalStage >= 30) grade = `${modePrefix} 마스터`;
-  else if (finalStage >= 15) grade = `${modePrefix} 특공대`;
-  else grade = "예비 특공대";
+  const grade = getAcademicGrade({
+    level: player.level,
+    finalStage,
+    customMode: isCustomMode()
+  });
   document.getElementById("certGradeText").innerText = grade;
 
   // Generate Unique Cert number
@@ -243,8 +254,8 @@ export function saveCertificate() {
   const certContainer = document.getElementById("certContainer");
   if (!certContainer) return;
 
-  // Open the external link in a new browser window/tab
-  window.open("https://samboard.vivasam.com/studentEntry/?brdId=brd-0QR3C3WJN6RYH", "_blank");
+  // Open the external board so the saved certificate can be registered.
+  openCertificateBoard();
 
   html2canvas(certContainer, {
     scale: 2, // Retain high quality

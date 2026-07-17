@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ACTIVE_SESSION_KEY,
+  SESSION_AUTOSAVE_INTERVAL,
   SESSION_SCHEMA_VERSION,
   clearActiveSession,
   createSessionSnapshot,
   loadActiveSession,
   saveActiveSession
 } from '../src/sessionManager.js';
+
+test('uses a five-second gameplay autosave interval', () => {
+  assert.equal(SESSION_AUTOSAVE_INTERVAL, 5000);
+});
 
 function createStorage(initial = {}) {
   const values = new Map(Object.entries(initial));

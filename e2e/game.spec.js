@@ -98,7 +98,7 @@ test('starts a regular game and pauses and resumes', async ({ page }) => {
   await page.keyboard.up('d');
   await expect.poll(async () => {
     return page.evaluate(key => JSON.parse(sessionStorage.getItem(key)).player.x, SESSION_KEY);
-  }).toBeGreaterThan(initialX);
+  }, { timeout: 7000 }).toBeGreaterThan(initialX);
 
   await page.reload();
   await expect(page.locator('#gameContainer')).toBeVisible();
@@ -112,6 +112,64 @@ test('starts a regular game and pauses and resumes', async ({ page }) => {
   await expect(page.locator('#pauseModal')).toBeVisible();
   await page.locator('#pauseResumeBtn').click();
   await expect(page.locator('#pauseModal')).toBeHidden();
+});
+
+test('opens the certificate registration board from the start screen', async ({ page, context }) => {
+  await context.route('https://samboard.vivasam.com/**', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><title>Certificate board</title>'
+  }));
+  await page.goto('/');
+
+  const popupPromise = page.waitForEvent('popup');
+  await page.locator('#registerCertificateBtn').click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState('domcontentloaded');
+
+  expect(popup.url()).toBe('https://samboard.vivasam.com/studentEntry/?brdId=brd-0QR3C3WJN6RYH');
+  await popup.close();
+});
+
+test('creates a floating analog joystick at the mobile touch position', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.locator('#playerNameInput').fill('Mobile Player');
+  await page.locator('#startGameBtn').click();
+  await expect(page.locator('#gameContainer')).toBeVisible();
+
+  const canvas = page.locator('#gameCanvas');
+  const control = page.locator('#mobileMoveControl');
+  await canvas.dispatchEvent('pointerdown', {
+    pointerId: 17,
+    pointerType: 'touch',
+    clientX: 210,
+    clientY: 500,
+    bubbles: true
+  });
+
+  await expect(control).toHaveClass(/active/);
+  await expect(control).toHaveCSS('left', '210px');
+  await expect(control).toHaveCSS('top', '500px');
+
+  await canvas.dispatchEvent('pointermove', {
+    pointerId: 17,
+    pointerType: 'touch',
+    clientX: 272,
+    clientY: 531,
+    bubbles: true
+  });
+  const knobTransform = await page.locator('#mobileStickKnob').evaluate(element => element.style.transform);
+  expect(knobTransform).toContain('px');
+  expect(knobTransform).not.toContain('+ 0px');
+
+  await canvas.dispatchEvent('pointerup', {
+    pointerId: 17,
+    pointerType: 'touch',
+    clientX: 272,
+    clientY: 531,
+    bubbles: true
+  });
+  await expect(control).not.toHaveClass(/active/);
 });
 
 test('restores an active session into the shop', async ({ page }) => {
@@ -310,6 +368,47 @@ test('renders distinct projectile shapes for every firing monster', async ({ pag
   await expect(page.locator('#enemyProjectileShowcase')).toBeVisible();
   const image = await page.locator('#enemyProjectileShowcase').screenshot();
   expect(image.byteLength).toBeGreaterThan(10000);
+});
+
+test('renders the electromagnetic rifle without a magenta sprite background', async ({ page }) => {
+  await page.goto('/');
+  const pixels = await page.evaluate(async () => {
+    const [{ Projectile }, { WEAPONS_DB }] = await Promise.all([
+      import('/src/player.js'),
+      import('/src/shop.js')
+    ]);
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 900;
+    canvas.height = 260;
+    const ctx = canvas.getContext('2d');
+    const weapon = WEAPONS_DB.find(item => item.id === 13);
+    const projectile = new Projectile(
+      70,
+      canvas.height / 2,
+      canvas.width - 40,
+      canvas.height / 2,
+      weapon,
+      { atkMultiplier: 1 },
+      { maxRange: 760 }
+    );
+    projectile.createdTime = Date.now() - projectile.lifeTime / 2;
+    projectile.draw(ctx);
+
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let visible = 0;
+    let magenta = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const [red, green, blue, alpha] = data.subarray(i, i + 4);
+      if (alpha > 10) visible++;
+      if (alpha > 10 && red > 180 && blue > 180 && green < 80) magenta++;
+    }
+    return { visible, magenta };
+  });
+
+  expect(pixels.visible).toBeGreaterThan(1000);
+  expect(pixels.magenta).toBe(0);
 });
 
 test('keeps Korean units on large-number game drops but expands brain answers', async ({ page }) => {

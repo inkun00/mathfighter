@@ -9,6 +9,16 @@ import {
 export { MonsterProjectile } from './enemyProjectiles.js';
 
 const ENEMY_STAT_NORMALIZER = 0.9;
+const MONSTER_IMAGE_CACHE = new Map();
+
+export function getCachedMonsterImage(source) {
+  if (!MONSTER_IMAGE_CACHE.has(source)) {
+    const image = new Image();
+    image.src = source;
+    MONSTER_IMAGE_CACHE.set(source, image);
+  }
+  return MONSTER_IMAGE_CACHE.get(source);
+}
 
 // Item Class for Drop Items: Exp Gem, Numbers, Bomb, Heart
 export class DropItem {
@@ -241,39 +251,25 @@ export class Monster {
     this.bombTimer = 0;
     this.isAboutToExplode = false;
 
-    // Load nano banana2 slime sprite frames dictionary (fallback support)
+    // Shared image objects prevent every monster instance from decoding the same sprites again.
     this.imgs = {
-      down1: new Image(),
-      down2: new Image(),
-      up1: new Image(),
-      up2: new Image(),
-      side1: new Image(),
-      side2: new Image()
+      down1: getCachedMonsterImage('/assets/slime_d1.png'),
+      down2: getCachedMonsterImage('/assets/slime_d2.png'),
+      up1: getCachedMonsterImage('/assets/slime_d1.png'),
+      up2: getCachedMonsterImage('/assets/slime_d2.png'),
+      side1: getCachedMonsterImage('/assets/slime_s1.png'),
+      side2: getCachedMonsterImage('/assets/slime_s2.png')
     };
-    this.imgs.down1.src = '/assets/slime_d1.png';
-    this.imgs.down2.src = '/assets/slime_d2.png';
-    this.imgs.up1.src = '/assets/slime_d1.png';
-    this.imgs.up2.src = '/assets/slime_d2.png';
-    this.imgs.side1.src = '/assets/slime_s1.png';
-    this.imgs.side2.src = '/assets/slime_s2.png';
 
-    // 4x4 Grid sheet loading
-    this.sheetImg = new Image();
+    let sheetSource = '/assets/slime_sheet1.png';
     if (this.isSlime) {
       if (this.tier === 3) {
-        this.sheetImg.src = '/assets/slime_sheet3.png';
+        sheetSource = '/assets/slime_sheet3.png';
       } else if (this.tier === 2) {
-        this.sheetImg.src = '/assets/slime_sheet2.png';
-      } else {
-        this.sheetImg.src = '/assets/slime_sheet1.png';
+        sheetSource = '/assets/slime_sheet2.png';
       }
-    } else {
-      // Fallback for other monsters
-      this.sheetImg.src = '/assets/slime_sheet1.png';
     }
-    if (template.sheet) {
-      this.sheetImg.src = template.sheet;
-    }
+    this.sheetImg = getCachedMonsterImage(template.sheet || sheetSource);
     this.spriteSize = template.spriteSize || 60; // Rendered sprite display size in pixels
 
     this.animOffset = Math.floor(Math.random() * 1000); // Random offset to desynchronize monster animations

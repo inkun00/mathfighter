@@ -18,7 +18,7 @@ function padletProxyPlugin() {
           try {
             const body = await fetchPadletPostHtml(targetUrl, process.env.PADLET_API_KEY);
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Cache-Control', 'no-store');
             res.statusCode = 200;
             res.end(body);
           } catch (err) {

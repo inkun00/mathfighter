@@ -29,3 +29,7 @@ test('uses unique monster ids and provides every sprite sheet', () => {
     assert.equal(monster.isElite === true, monster.rank >= 4);
   });
 });
+
+test('uses optimized WebP sheets for every roster monster', () => {
+  assert.ok(MONSTER_ROSTER.every(monster => monster.sheet.endsWith('.webp')));
+});

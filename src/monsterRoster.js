@@ -47,7 +47,7 @@ export const MONSTER_ROSTER = Object.entries(FAMILY_ROSTERS).flatMap(([family, m
   monsters.map(monster => ({
     ...monster,
     family,
-    sheet: `/assets/monsters/monster_${monster.id}_sheet.png`
+    sheet: `/assets/monsters/monster_${monster.id}_sheet.webp`
   }))
 );
 

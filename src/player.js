@@ -14,8 +14,6 @@ const firePatchSheet = new Image();
 firePatchSheet.src = '/assets/effects/fire_patch_sheet.png';
 const electromagneticLaserSheet = new Image();
 electromagneticLaserSheet.src = '/assets/effects/electromagnetic_laser_beam.png';
-const electromagneticLaserSource = new Image();
-electromagneticLaserSource.src = '/assets/effects/electromagnetic_laser_source.png';
 
 function getProjectileIconImage(id) {
   if (!projectileIconCache.has(id)) {
@@ -459,11 +457,46 @@ export class Projectile {
         ctx.stroke();
       }
 
-      if (electromagneticLaserSource.complete && electromagneticLaserSource.naturalWidth !== 0) {
-        const sourceSize = beamHeight * (this.behavior === 'plasma_rail' ? 2.6 : 2.1);
-        ctx.globalAlpha = Math.max(0.45, alpha);
-        ctx.drawImage(electromagneticLaserSource, -sourceSize * 0.5, -sourceSize * 0.5, sourceSize, sourceSize);
+      const isPlasmaRail = this.behavior === 'plasma_rail';
+      const sourceRadius = beamHeight * (isPlasmaRail ? 0.72 : 0.62);
+      const sourceColor = isPlasmaRail ? '#ff72ff' : '#00efff';
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = Math.max(0.48, alpha);
+      ctx.shadowColor = sourceColor;
+      ctx.shadowBlur = visualProfile.glowBlur + 8;
+
+      ctx.fillStyle = '#efffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, sourceRadius * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = sourceColor;
+      ctx.lineCap = 'round';
+      for (let ring = 0; ring < 2; ring++) {
+        ctx.globalAlpha = Math.max(0.22, alpha * (0.72 - ring * 0.22));
+        ctx.lineWidth = Math.max(2, sourceRadius * (0.13 - ring * 0.035));
+        ctx.beginPath();
+        ctx.arc(0, 0, sourceRadius * (0.48 + ring * 0.28), 0, Math.PI * 2);
+        ctx.stroke();
       }
+
+      ctx.globalAlpha = Math.max(0.28, alpha * 0.78);
+      ctx.lineWidth = Math.max(1.5, sourceRadius * 0.08);
+      for (let spark = 0; spark < 6; spark++) {
+        const sparkAngle = (Math.PI * 2 * spark) / 6 + elapsed * 0.018;
+        ctx.beginPath();
+        ctx.moveTo(
+          Math.cos(sparkAngle) * sourceRadius * 0.46,
+          Math.sin(sparkAngle) * sourceRadius * 0.46
+        );
+        ctx.lineTo(
+          Math.cos(sparkAngle) * sourceRadius * 0.92,
+          Math.sin(sparkAngle) * sourceRadius * 0.92
+        );
+        ctx.stroke();
+      }
+      ctx.restore();
 
       ctx.restore();
       return;
@@ -661,16 +694,21 @@ export class Player {
     let dx = 0;
     let dy = 0;
 
-    // Keyboard inputs
-    if (keys['ArrowUp'] || keys['w'] || keys['W']) dy = -1;
-    if (keys['ArrowDown'] || keys['s'] || keys['S']) dy = 1;
-    if (keys['ArrowLeft'] || keys['a'] || keys['A']) dx = -1;
-    if (keys['ArrowRight'] || keys['d'] || keys['D']) dx = 1;
+    if (keys.__mobileMoveActive) {
+      dx = keys.__mobileMoveX || 0;
+      dy = keys.__mobileMoveY || 0;
+    } else {
+      // Keyboard inputs
+      if (keys['ArrowUp'] || keys['w'] || keys['W']) dy = -1;
+      if (keys['ArrowDown'] || keys['s'] || keys['S']) dy = 1;
+      if (keys['ArrowLeft'] || keys['a'] || keys['A']) dx = -1;
+      if (keys['ArrowRight'] || keys['d'] || keys['D']) dx = 1;
 
-    // Normalise speed for diagonal moves
-    if (dx !== 0 && dy !== 0) {
-      dx *= 0.7071;
-      dy *= 0.7071;
+      // Normalise speed for diagonal keyboard moves
+      if (dx !== 0 && dy !== 0) {
+        dx *= 0.7071;
+        dy *= 0.7071;
+      }
     }
 
     const mobileMoveSpeedScale = keys.__mobileBrowserActive ? 0.5 : 1;

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PADLET_RESPONSE_CACHE_CONTROL } from '../api/fetch-padlet.js';
 import { fetchPadletPostHtml } from '../api/padlet-service.js';
 import { parsePadletText } from '../src/customQuiz.js';
+
+test('caches successful production Padlet responses at the edge', () => {
+  assert.equal(PADLET_RESPONSE_CACHE_CONTROL, 'public, s-maxage=300, stale-while-revalidate=600');
+});
 
 test('parsePadletText converts category text into quiz data', () => {
   const result = parsePadletText('●포유류, 고래, 박쥐, 호랑이🐾 ●조류, 참새, 독수리, 펭귄');

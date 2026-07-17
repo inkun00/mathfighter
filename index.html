@@ -3,14 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>수학 특공대: 약수와 배수 (Math Fighter)</title>
+  <title>수학 특공대: 초등 수학 4~6학년 (Math Fighter)</title>
   <!-- Google Fonts: Retro & Clean Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
-  <!-- html2canvas CDN for image download fallback -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -18,7 +16,7 @@
     <div id="startScreen" class="overlay-screen active">
       <div class="pixel-box main-title-box">
         <h1 class="main-title">MATH<br><span class="highlight">FIGHTER</span></h1>
-        <p class="subtitle">수학 특공대: 약수와 배수</p>
+        <p class="subtitle">초등 수학 4~6학년</p>
       </div>
       <div class="pixel-box start-form-box">
         <label for="playerNameInput" class="label-text">특공대원 이름을 입력하세요</label>
@@ -49,13 +47,14 @@
         </div>
         
         <button id="startGameBtn" class="pixel-btn">게임 시작</button>
+        <button id="registerCertificateBtn" class="pixel-btn secondary-btn">인증서 등록하기</button>
         <button id="customGameBtn" class="pixel-btn secondary-btn" style="margin-top: 10px;">다른 문제로 플레이</button>
       </div>
       <div class="instructions-box">
         <h3>[ 게임 조작 방법 ]</h3>
         <p>• 이동: 키보드 방향키 또는 <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span></p>
         <p>• 무기 공격: 자동 조준 및 자동 발사</p>
-        <p>• 학습 규칙: 화면 상단 문제를 보고, 몹이 드롭하는 <span class="green-text">정답 숫자</span>를 획득하여 게이지를 채우세요. <span class="red-text">오답 숫자</span>를 먹으면 HP가 크게 감소합니다!</p>
+        <p>• 학습 규칙: 화면 상단 문제를 보고, 몹이 드롭하는 <span class="green-text">정답</span>을 획득하여 게이지를 채우세요. <span class="red-text">오답</span>을 먹으면 HP가 크게 감소합니다!</p>
       </div>
     </div>
 

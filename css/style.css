@@ -522,14 +522,16 @@ body, html {
 
 .mobile-move-control {
   position: absolute;
-  left: 24px;
-  bottom: 112px;
+  left: 0;
+  top: 0;
   width: 132px;
   height: 132px;
   display: none;
   align-items: center;
   justify-content: center;
   z-index: 140;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
   touch-action: none;
   user-select: none;
 }
@@ -613,8 +615,12 @@ body, html {
 }
 
 @media (pointer: coarse), (max-width: 760px) {
-  .mobile-move-control {
+  .mobile-move-control.active {
     display: flex;
+  }
+
+  #gameContainer {
+    touch-action: none;
   }
 
   .mobile-pause-btn {

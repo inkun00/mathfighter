@@ -3,6 +3,7 @@ import { normalizeWrongQuestionStats } from './learningReport.js';
 
 export const ACTIVE_SESSION_KEY = 'math_fighter_active_session';
 export const SESSION_SCHEMA_VERSION = 1;
+export const SESSION_AUTOSAVE_INTERVAL = 5000;
 
 const RESTORABLE_STATES = new Set(['play', 'pause', 'levelUp', 'shop', 'exam']);
 const MAX_SAVED_MONSTERS = 300;

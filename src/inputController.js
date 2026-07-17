@@ -3,40 +3,52 @@ const GAMEPLAY_KEYS = new Set([
   'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'
 ]);
 
+export function getAnalogStickVector(dx, dy, maxDistance, deadZoneRatio = 0.18) {
+  const distance = Math.hypot(dx, dy);
+  const deadZone = maxDistance * deadZoneRatio;
+  if (distance <= deadZone || maxDistance <= deadZone) {
+    return { x: 0, y: 0, strength: 0 };
+  }
+
+  const strength = Math.min(1, (distance - deadZone) / (maxDistance - deadZone));
+  return {
+    x: (dx / distance) * strength,
+    y: (dy / distance) * strength,
+    strength
+  };
+}
+
 export function createInputController({ getGameState, onPause, onResume }) {
   const keys = {};
-  const mobileMoveKeys = new Set();
   let activeMovePointerId = null;
+  let mobileOriginX = 0;
+  let mobileOriginY = 0;
   let initialized = false;
 
   function clearKeys() {
     Object.keys(keys).forEach(key => {
       delete keys[key];
     });
-    mobileMoveKeys.clear();
     keys.__mobileMoveActive = false;
+    keys.__mobileMoveX = 0;
+    keys.__mobileMoveY = 0;
   }
 
-  function setMobileMoveKeys(nextKeys) {
-    mobileMoveKeys.forEach(key => {
-      keys[key] = false;
-    });
-    mobileMoveKeys.clear();
-
-    nextKeys.forEach(key => {
-      keys[key] = true;
-      mobileMoveKeys.add(key);
-    });
-    keys.__mobileMoveActive = nextKeys.length > 0;
+  function setMobileMoveVector(vector) {
+    keys.__mobileMoveX = vector.x;
+    keys.__mobileMoveY = vector.y;
+    keys.__mobileMoveActive = vector.strength > 0;
   }
 
   function reset() {
     clearKeys();
     activeMovePointerId = null;
     const knob = document.getElementById('mobileStickKnob');
+    const control = document.getElementById('mobileMoveControl');
     if (knob) {
       knob.style.transform = 'translate(-50%, -50%)';
     }
+    control?.classList.remove('active');
   }
 
   function setupKeyboard() {
@@ -70,45 +82,51 @@ export function createInputController({ getGameState, onPause, onResume }) {
   }
 
   function setupMobileMovement() {
+    const gameContainer = document.getElementById('gameContainer');
     const control = document.getElementById('mobileMoveControl');
     const knob = document.getElementById('mobileStickKnob');
-    if (!control || !knob) return;
+    if (!gameContainer || !control || !knob) return;
+
+    const placeControl = event => {
+      const gameRect = gameContainer.getBoundingClientRect();
+      mobileOriginX = event.clientX;
+      mobileOriginY = event.clientY;
+      control.style.left = `${event.clientX - gameRect.left}px`;
+      control.style.top = `${event.clientY - gameRect.top}px`;
+      control.classList.add('active');
+    };
 
     const updateMobileMove = event => {
-      const rect = control.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const maxDistance = rect.width * 0.32;
-      const rawDx = event.clientX - centerX;
-      const rawDy = event.clientY - centerY;
+      const maxDistance = control.offsetWidth * 0.32;
+      const rawDx = event.clientX - mobileOriginX;
+      const rawDy = event.clientY - mobileOriginY;
       const distance = Math.hypot(rawDx, rawDy);
       const clampedDistance = Math.min(maxDistance, distance);
       const angle = Math.atan2(rawDy, rawDx);
       const knobX = distance > 0 ? Math.cos(angle) * clampedDistance : 0;
       const knobY = distance > 0 ? Math.sin(angle) * clampedDistance : 0;
-      const deadZone = maxDistance * 0.24;
-      const nextKeys = [];
+      const vector = getAnalogStickVector(rawDx, rawDy, maxDistance);
 
       knob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
-
-      if (distance >= deadZone && getGameState() === 'play') {
-        if (Math.sin(angle) < -0.35) nextKeys.push('ArrowUp');
-        if (Math.sin(angle) > 0.35) nextKeys.push('ArrowDown');
-        if (Math.cos(angle) < -0.35) nextKeys.push('ArrowLeft');
-        if (Math.cos(angle) > 0.35) nextKeys.push('ArrowRight');
-      }
-
-      setMobileMoveKeys(nextKeys);
+      setMobileMoveVector(getGameState() === 'play' ? vector : { x: 0, y: 0, strength: 0 });
     };
 
-    control.addEventListener('pointerdown', event => {
+    gameContainer.addEventListener('pointerdown', event => {
+      if (
+        event.pointerType !== 'touch' ||
+        getGameState() !== 'play' ||
+        activeMovePointerId !== null ||
+        event.target.closest?.('button, input, select, a, .modal')
+      ) return;
+
       event.preventDefault();
       activeMovePointerId = event.pointerId;
-      control.setPointerCapture?.(event.pointerId);
+      placeControl(event);
+      if (event.isTrusted) gameContainer.setPointerCapture?.(event.pointerId);
       updateMobileMove(event);
     });
 
-    control.addEventListener('pointermove', event => {
+    gameContainer.addEventListener('pointermove', event => {
       if (activeMovePointerId !== event.pointerId) return;
       event.preventDefault();
       updateMobileMove(event);
@@ -119,9 +137,9 @@ export function createInputController({ getGameState, onPause, onResume }) {
       reset();
     };
 
-    control.addEventListener('pointerup', endMobileMove);
-    control.addEventListener('pointercancel', endMobileMove);
-    control.addEventListener('lostpointercapture', reset);
+    gameContainer.addEventListener('pointerup', endMobileMove);
+    gameContainer.addEventListener('pointercancel', endMobileMove);
+    gameContainer.addEventListener('lostpointercapture', reset);
   }
 
   function setupMobilePause() {
