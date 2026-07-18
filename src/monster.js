@@ -10,6 +10,31 @@ export { MonsterProjectile } from './enemyProjectiles.js';
 
 const ENEMY_STAT_NORMALIZER = 0.9;
 const MONSTER_IMAGE_CACHE = new Map();
+const MONSTER_WALK_SEQUENCE = Object.freeze([0, 1, 2, 3]);
+
+export function getMonsterAnimationFrame(isMoving, distance, spriteSize = 64) {
+  if (!isMoving) return 0;
+  const phaseDistance = Math.max(8, spriteSize * 0.15);
+  const phase = Math.floor(distance / phaseDistance) % MONSTER_WALK_SEQUENCE.length;
+  return MONSTER_WALK_SEQUENCE[phase];
+}
+
+export function getMonsterMotionDirection(dx, dy, currentFacing = 1, currentDirection = 'down') {
+  if (Math.hypot(dx, dy) <= 0.01) {
+    return { facing: currentFacing, direction: currentDirection };
+  }
+
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const switchRatio = 1.25;
+  const keepSide = currentDirection === 'side' && absY <= absX * switchRatio;
+  const switchToSide = currentDirection !== 'side' && absX > absY * switchRatio;
+
+  if (keepSide || switchToSide) {
+    return { facing: dx >= 0 ? 1 : -1, direction: 'side' };
+  }
+  return { facing: currentFacing, direction: dy >= 0 ? 'down' : 'up' };
+}
 
 export function getCachedMonsterImage(source) {
   if (!MONSTER_IMAGE_CACHE.has(source)) {
@@ -167,6 +192,7 @@ export class Monster {
     this.y = y;
     this.stage = stage;
     this.templateId = template.id || template.name;
+    this.family = template.family || '';
     this.rank = template.rank || 1;
     this.pattern = template.pattern;
     this.color = template.color;
@@ -272,7 +298,8 @@ export class Monster {
     this.sheetImg = getCachedMonsterImage(template.sheet || sheetSource);
     this.spriteSize = template.spriteSize || 60; // Rendered sprite display size in pixels
 
-    this.animOffset = Math.floor(Math.random() * 1000); // Random offset to desynchronize monster animations
+    this.animationDistance = 0;
+    this.isMoving = false;
     this.facing = 1; // 1 = Right, -1 = Left
     this.direction = 'down'; // 'down', 'up', 'side'
   }
@@ -280,22 +307,22 @@ export class Monster {
   update(playerPos, monsters, monsterProjectiles) {
     if (this.hp <= 0) return;
     const now = Date.now();
+    const startX = this.x;
+    const startY = this.y;
+    const finishUpdate = result => {
+      this.syncMovementAnimation(startX, startY);
+      return result;
+    };
     this.updateStatusEffects(now);
 
     const dx = playerPos.x - this.x;
     const dy = playerPos.y - this.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    // Update facing and direction based on player relative position
-    if (dx !== 0) {
-      this.facing = dx >= 0 ? 1 : -1;
-    }
-    
-    if (Math.abs(dy) > Math.abs(dx)) {
-      this.direction = dy >= 0 ? 'down' : 'up';
-    } else {
-      this.direction = 'side';
-    }
+    // Keep aiming direction stable near diagonal row boundaries.
+    const targetDirection = getMonsterMotionDirection(dx, dy, this.facing, this.direction);
+    this.facing = targetDirection.facing;
+    this.direction = targetDirection.direction;
 
     if (this.isHitFlash > 0) this.isHitFlash--;
 
@@ -324,7 +351,7 @@ export class Monster {
         if (this.bombTimer <= 0) {
           // Trigger explosion
           this.hp = 0; // Kills itself
-          return 'explode'; // Trigger splash damage in main loop
+          return finishUpdate('explode'); // Trigger splash damage in main loop
         }
       }
     }
@@ -352,7 +379,7 @@ export class Monster {
         ));
         this.lastActionTime = now;
       }
-      return;
+      return finishUpdate();
     }
 
     if (this.pattern === 'orbit' && projectileProfile && dist < projectileProfile.rangeMax) {
@@ -382,7 +409,7 @@ export class Monster {
         const angle = Math.atan2(dy, dx) + Math.PI / 2;
         this.x += Math.cos(angle) * this.speed * 0.5;
         this.y += Math.sin(angle) * this.speed * 0.5;
-        return;
+        return finishUpdate();
       }
     }
 
@@ -415,6 +442,19 @@ export class Monster {
         this.y -= (oy / odist) * force;
       }
     });
+    return finishUpdate();
+  }
+
+  syncMovementAnimation(startX, startY) {
+    const movedX = this.x - startX;
+    const movedY = this.y - startY;
+    const movedDistance = Math.hypot(movedX, movedY);
+    const movement = getMonsterMotionDirection(movedX, movedY, this.facing, this.direction);
+
+    this.isMoving = movedDistance > 0.05;
+    this.facing = movement.facing;
+    this.direction = movement.direction;
+    if (this.isMoving) this.animationDistance += movedDistance;
   }
 
   updateStatusEffects(now) {
@@ -520,10 +560,10 @@ export class Monster {
       const freq = (90 - this.bombTimer) * 0.2;
       scaleY = 1 + Math.sin(freq) * 0.1;
       scaleX = 1 - Math.sin(freq) * 0.08;
-    } else {
-      // Idle bounce breathing pulse
-      scaleY = 1 + Math.sin(Date.now() * 0.004) * 0.04;
-      scaleX = 1 - Math.sin(Date.now() * 0.004) * 0.02;
+    } else if (this.family === 'slime') {
+      // Slimes keep a small elastic pulse; rigid monsters retain their proportions.
+      scaleY = 1 + Math.sin(Date.now() * 0.003) * 0.025;
+      scaleX = 1 - Math.sin(Date.now() * 0.003) * 0.015;
     }
 
     // Apply bounce scaling (NO facing scale here to prevent double flip because sheet has left/right rows)
@@ -542,8 +582,8 @@ export class Monster {
         row = this.facing === 1 ? 2 : 1; // 2 = right, 1 = left
       }
       
-      // Determine Column index (4 frames walking cycle)
-      const col = Math.floor((Date.now() + this.animOffset) / 280) % 4;
+      // Advance the walking cycle only while the monster actually moves.
+      const col = getMonsterAnimationFrame(this.isMoving, this.animationDistance, this.spriteSize);
       
       const sx = col * sw;
       const sy = row * sh;

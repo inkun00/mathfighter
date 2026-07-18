@@ -413,6 +413,38 @@ body, html {
   text-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
 }
 
+.math-number,
+.math-mixed-number {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.math-mixed-number {
+  gap: 0.18em;
+}
+
+.math-fraction {
+  display: inline-grid;
+  grid-template-rows: 1fr 1fr;
+  min-width: 1.2em;
+  margin: 0 0.08em;
+  vertical-align: middle;
+  font-size: 0.78em;
+  line-height: 0.92;
+  text-align: center;
+  text-shadow: 0 0 6px rgba(0, 255, 255, 0.46);
+}
+
+.math-numerator {
+  padding: 0 0.12em 0.08em;
+  border-bottom: 0.1em solid currentColor;
+}
+
+.math-denominator {
+  padding: 0.08em 0.12em 0;
+}
+
 .gauge-container {
   width: 100%;
   height: 10px;
@@ -822,7 +854,8 @@ body, html {
 
 .player-status-panel {
   min-height: 420px;
-  height: 100%;
+  height: max-content;
+  align-self: start;
   background: rgba(10, 10, 24, 0.95);
   display: flex;
   flex-direction: column;
@@ -832,6 +865,8 @@ body, html {
 .status-player-preview {
   width: 132px;
   height: 132px;
+  flex: 0 0 132px;
+  aspect-ratio: 1 / 1;
   align-self: center;
   background-image: url('/assets/player_sheet.png');
   background-size: 400% 400%;
@@ -847,6 +882,7 @@ body, html {
 .player-status-panel h3 {
   font-family: var(--font-retro);
   font-size: 12px;
+  line-height: 1.14;
   color: var(--color-warning);
   text-align: center;
 }
@@ -855,7 +891,7 @@ body, html {
 .status-weapon-list {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 6.65px;
 }
 
 .status-row,
@@ -865,6 +901,7 @@ body, html {
   justify-content: space-between;
   gap: 10px;
   font-size: 13px;
+  line-height: 1.14;
   color: var(--color-text-light);
 }
 
@@ -877,8 +914,9 @@ body, html {
 .status-section-title {
   font-family: var(--font-retro);
   font-size: 10px;
+  line-height: 1.14;
   color: var(--color-secondary);
-  margin-top: 4px;
+  margin-top: 3.8px;
 }
 
 .change-row {

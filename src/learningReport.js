@@ -11,6 +11,7 @@ const GRADE_SIX_SEMESTER_ONE_LABELS = [
 const CUSTOM_LABELS = ['단어 매칭', '카테고리 분류', '순발력', '집중력', '정확도'];
 const MAX_WRONG_QUESTIONS = 50;
 const MAX_UNIT_AREA = 6;
+const CHOICE_MARKERS = Object.freeze(['①', '②', '③', '④', '⑤']);
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -98,9 +99,12 @@ export function buildWorksheetHtml({ playerName, curriculum, labels, questions }
   }];
   const questionRows = safeQuestions.map((question, index) => {
     const choices = [...question.answers, ...question.distractors].slice(0, 5);
-    return `<article class="question"><h2>${index + 1}. ${escapeHtml(question.text)}</h2><p class="unit">${escapeHtml(labels[question.area - 1] || '')}</p>${choices.length > 1 ? `<p class="choices">보기: ${choices.map(escapeHtml).join(' / ')}</p>` : ''}<div class="answer-line"></div></article>`;
+    const numberedChoices = choices.map((choice, choiceIndex) => (
+      `<span class="choice"><b>${CHOICE_MARKERS[choiceIndex]}</b> ${escapeHtml(choice)}</span>`
+    )).join('');
+    return `<article class="question"><h2>${index + 1}. ${escapeHtml(question.text)}</h2><p class="unit">${escapeHtml(labels[question.area - 1] || '')}</p>${choices.length > 1 ? `<div class="choices"><span class="choice-label">보기:</span>${numberedChoices}</div>` : ''}<div class="answer-line"></div></article>`;
   }).join('');
-  const answerRows = safeQuestions.map((question, index) => `<tr><th>${index + 1}</th><td>${escapeHtml(question.text)}</td><td>${question.answers.map(escapeHtml).join(', ')}</td></tr>`).join('');
+  const answerRows = safeQuestions.map((question, index) => `<tr><th>${index + 1}</th><td>${escapeHtml(question.text)}</td><td>${question.answers.map((answer, answerIndex) => `${CHOICE_MARKERS[answerIndex] || ''} ${escapeHtml(answer)}`.trim()).join(', ')}</td></tr>`).join('');
 
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${escapeHtml(playerName)} 학습 보충 시험지</title><style>
     @page { size: A4; margin: 14mm; }
@@ -114,7 +118,10 @@ export function buildWorksheetHtml({ playerName, curriculum, labels, questions }
     .question { break-inside: avoid; margin: 0 0 18px; }
     .question h2 { margin: 0 0 5px; font-size: 15px; font-weight: 600; }
     .unit { margin: 0 0 5px; color: #666; font-size: 11px; }
-    .choices { margin: 5px 0; padding: 7px 10px; background: #f2f2f2; font-size: 12px; }
+    .choices { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin: 5px 0; padding: 7px 10px; background: #f2f2f2; font-size: 12px; }
+    .choice-label { flex: 0 0 auto; }
+    .choice { display: inline-flex; gap: 4px; line-height: 1.45; }
+    .choice b { font-size: 13px; }
     .answer-line { height: 24px; border-bottom: 1px solid #999; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { border: 1px solid #aaa; padding: 9px; text-align: left; }

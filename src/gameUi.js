@@ -20,6 +20,7 @@ import {
   getWeaponFireStyleLabel,
   getWeaponRangeLabel
 } from './weaponProfiles.js';
+import { renderMathText } from './mathTextFormatter.js';
 
 export function isVisibleGameplayScreen(player, currentProblem) {
   const gameContainer = document.getElementById('gameContainer');
@@ -75,7 +76,7 @@ export function createGameUi({
     const { player, currentProblem, boss, stageTimer, problemProgress, combo } = getState();
     if (!player || !currentProblem) return;
 
-    document.getElementById('problemText').innerText = currentProblem.text;
+    renderMathText(document.getElementById('problemText'), currentProblem.text);
     document.getElementById('problemTimer').innerText = boss ? 'BOSS' : stageTimer;
 
     const activeProgress = boss?.isGimmickActive ? boss.gimmickAnswerCount : problemProgress;

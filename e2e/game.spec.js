@@ -185,6 +185,24 @@ test('restores an active session into the shop', async ({ page }) => {
   await expect(page.locator('#stageNum')).toHaveText('3');
 });
 
+test('keeps the shop profile sprite square in a narrow viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await seedShopSession(page, 2);
+  await page.goto('/');
+
+  const preview = page.locator('#shopPlayerPreview');
+  const box = await preview.boundingBox();
+  const typography = await page.locator('#shopPlayerStats .status-row').first().evaluate(element => ({
+    lineHeight: getComputedStyle(element).lineHeight,
+    listGap: getComputedStyle(element.parentElement).rowGap
+  }));
+
+  expect(box.width).toBe(132);
+  expect(box.height).toBe(132);
+  expect(typography.lineHeight).toBe('14.82px');
+  expect(typography.listGap).toBe('6.65px');
+});
+
 test('clears a real regular stage countdown into the shop', async ({ page }) => {
   await seedSession(page, createPlaySession(1, {
     stageTimer: 1,
@@ -370,6 +388,97 @@ test('renders distinct projectile shapes for every firing monster', async ({ pag
   expect(image.byteLength).toBeGreaterThan(10000);
 });
 
+test('holds an idle monster pose and advances frames only while moving', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const [{ Monster }, { MONSTER_ROSTER }] = await Promise.all([
+      import('/src/monster.js'),
+      import('/src/monsterRoster.js')
+    ]);
+    const template = MONSTER_ROSTER.find(monster => monster.id === 'grunt_zombie');
+    const monster = new Monster(64, 64, template, 1);
+    if (!monster.sheetImg.complete) {
+      await new Promise((resolve, reject) => {
+        monster.sheetImg.addEventListener('load', resolve, { once: true });
+        monster.sheetImg.addEventListener('error', reject, { once: true });
+      });
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const capture = (isMoving, distance) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      monster.isMoving = isMoving;
+      monster.animationDistance = distance;
+      monster.draw(ctx);
+      return ctx.getImageData(0, 0, canvas.width, canvas.height).data.slice();
+    };
+    const countPixelChanges = (first, second) => {
+      let changed = 0;
+      for (let index = 0; index < first.length; index += 4) {
+        if (
+          first[index] !== second[index] ||
+          first[index + 1] !== second[index + 1] ||
+          first[index + 2] !== second[index + 2] ||
+          first[index + 3] !== second[index + 3]
+        ) changed++;
+      }
+      return changed;
+    };
+
+    const idleStart = capture(false, 0);
+    const idleLater = capture(false, 900);
+    const movingStart = capture(true, 0);
+    const movingLater = capture(true, 10);
+    return {
+      idleChanges: countPixelChanges(idleStart, idleLater),
+      movingChanges: countPixelChanges(movingStart, movingLater)
+    };
+  });
+
+  expect(result.idleChanges).toBeLessThanOrEqual(10);
+  expect(result.movingChanges).toBeGreaterThan(500);
+});
+
+test('renders mixed numbers as stacked fractions in problem text', async ({ page }) => {
+  await page.goto('/');
+  const layout = await page.evaluate(async () => {
+    const { renderMathText } = await import('/src/mathTextFormatter.js');
+    const preview = document.createElement('div');
+    preview.id = 'fractionPreview';
+    preview.className = 'problem-text-container';
+    preview.style.cssText = 'position:fixed;left:20px;top:20px;z-index:9999;background:#080312;padding:20px';
+    document.body.append(preview);
+    renderMathText(preview, '길이가 1 4/5m인 끈');
+
+    const fraction = preview.querySelector('.math-fraction');
+    const numerator = preview.querySelector('.math-numerator');
+    const denominator = preview.querySelector('.math-denominator');
+    const numeratorRect = numerator.getBoundingClientRect();
+    const denominatorRect = denominator.getBoundingClientRect();
+    return {
+      whole: preview.querySelector('.math-whole')?.textContent,
+      numerator: numerator.textContent,
+      denominator: denominator.textContent,
+      numeratorTop: numeratorRect.top,
+      denominatorTop: denominatorRect.top,
+      fractionLabel: fraction.getAttribute('aria-label'),
+      fractionLine: getComputedStyle(numerator).borderBottomWidth
+    };
+  });
+
+  expect(layout).toMatchObject({
+    whole: '1',
+    numerator: '4',
+    denominator: '5',
+    fractionLabel: '5분의 4'
+  });
+  expect(layout.numeratorTop).toBeLessThan(layout.denominatorTop);
+  expect(parseFloat(layout.fractionLine)).toBeGreaterThan(0);
+});
+
 test('renders the electromagnetic rifle without a magenta sprite background', async ({ page }) => {
   await page.goto('/');
   const pixels = await page.evaluate(async () => {
@@ -508,7 +617,8 @@ test('completes the run after stage 50', async ({ page }) => {
   await page.locator('#printWorksheetBtn').click();
   const worksheet = await popupPromise;
   await expect(worksheet.locator('.page')).toHaveCount(2);
-  await expect(worksheet.locator('.page').nth(1)).toContainText('180');
+  await expect(worksheet.locator('.page').first().locator('.choice').first()).toContainText('①');
+  await expect(worksheet.locator('.page').nth(1)).toContainText('① 180');
   await worksheet.close();
 
   await page.setViewportSize({ width: 390, height: 844 });

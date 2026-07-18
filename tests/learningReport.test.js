@@ -59,6 +59,10 @@ test('builds a two-page worksheet with questions first and answers second', () =
 
   assert.equal((html.match(/<section class="page">/g) || []).length, 2);
   assert.ok(html.indexOf('수학 보충 학습 시험지') < html.indexOf('문항별 정답'));
-  assert.match(html, /<td>180<\/td>/);
+  assert.match(html, /<span class="choice"><b>①<\/b> 180<\/span>/);
+  assert.match(html, /<span class="choice"><b>②<\/b> 90<\/span>/);
+  assert.match(html, /<span class="choice"><b>③<\/b> 270<\/span>/);
+  assert.match(html, /<span class="choice"><b>④<\/b> 360<\/span>/);
+  assert.match(html, /<td>① 180<\/td>/);
   assert.match(html, /page-break-after: always/);
 });
