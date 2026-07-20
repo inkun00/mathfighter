@@ -33,24 +33,42 @@ export async function fetchPadletPostHtml(targetUrl, apiKey, fetchImpl = fetch) 
   }
 
   const apiUrl = `https://api.padlet.dev/v1/boards/${boardId}?include=posts`;
-  const response = await fetchImpl(apiUrl, {
-    headers: {
-      'X-Api-Key': apiKey,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  let data;
+  try {
+    const response = await fetchImpl(apiUrl, {
+      signal: controller.signal,
+      headers: {
+        'X-Api-Key': apiKey,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const error = new Error(`Padlet API responded with status ${response.status}: ${response.statusText}`);
+      error.statusCode = response.status;
+      throw error;
     }
-  });
 
-  if (!response.ok) {
-    const error = new Error(`Padlet API responded with status ${response.status}: ${response.statusText}`);
-    error.statusCode = response.status;
-    throw error;
-  }
-
-  const data = await response.json();
-  if (!data.included || !Array.isArray(data.included)) {
-    const error = new Error('Invalid API response: missing "included" array.');
-    error.statusCode = 502;
-    throw error;
+    data = await response.json();
+    if (!data.included || !Array.isArray(data.included)) {
+      const error = new Error('Invalid API response: missing "included" array.');
+      error.statusCode = 502;
+      throw error;
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      const error = new Error('Padlet API request timed out (5s)');
+      error.statusCode = 504;
+      throw error;
+    }
+    throw err;
   }
 
   const post = data.included.find(item =>
