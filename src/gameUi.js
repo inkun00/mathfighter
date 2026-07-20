@@ -142,7 +142,7 @@ export function createGameUi({
 
       card.innerHTML = `
         <div class="pause-weapon-card-header">
-          <img class="pause-weapon-card-icon" src="/assets/weapons/weapon_${String(weapon.id).padStart(2, '0')}.png" alt="${weapon.name}">
+          <img class="pause-weapon-card-icon" src="/assets/weapons/weapon_${String(weapon.id).padStart(2, '0')}.webp" alt="${weapon.name}">
           <h4>${weapon.name}</h4>
         </div>
         <p class="pause-weapon-desc">피해: ${weapon.dmg} / 범위: ${getWeaponRangeLabel(weapon.id, weapon.type)}</p>
@@ -334,7 +334,7 @@ export function createGameUi({
 
       card.innerHTML = `
         <div class="card-header">
-          <img class="weapon-card-icon" src="/assets/weapons/weapon_${String(weapon.id).padStart(2, '0')}.png" alt="${weapon.name}" loading="lazy">
+          <img class="weapon-card-icon" src="/assets/weapons/weapon_${String(weapon.id).padStart(2, '0')}.webp" alt="${weapon.name}" loading="lazy">
           <div class="card-title"><h3>${weapon.name}</h3><span class="card-type ${weapon.type}">${weapon.type.toUpperCase()} · LV.${weaponLevel}/10</span></div>
         </div>
         <p class="card-desc">${weapon.desc}</p>

@@ -279,20 +279,20 @@ export class Monster {
 
     // Shared image objects prevent every monster instance from decoding the same sprites again.
     this.imgs = {
-      down1: getCachedMonsterImage('/assets/slime_d1.png'),
-      down2: getCachedMonsterImage('/assets/slime_d2.png'),
-      up1: getCachedMonsterImage('/assets/slime_d1.png'),
-      up2: getCachedMonsterImage('/assets/slime_d2.png'),
-      side1: getCachedMonsterImage('/assets/slime_s1.png'),
-      side2: getCachedMonsterImage('/assets/slime_s2.png')
+      down1: getCachedMonsterImage('/assets/slime_d1.webp'),
+      down2: getCachedMonsterImage('/assets/slime_d2.webp'),
+      up1: getCachedMonsterImage('/assets/slime_d1.webp'),
+      up2: getCachedMonsterImage('/assets/slime_d2.webp'),
+      side1: getCachedMonsterImage('/assets/slime_s1.webp'),
+      side2: getCachedMonsterImage('/assets/slime_s2.webp')
     };
 
-    let sheetSource = '/assets/slime_sheet1.png';
+    let sheetSource = '/assets/slime_sheet1.webp';
     if (this.isSlime) {
       if (this.tier === 3) {
-        sheetSource = '/assets/slime_sheet3.png';
+        sheetSource = '/assets/slime_sheet3.webp';
       } else if (this.tier === 2) {
-        sheetSource = '/assets/slime_sheet2.png';
+        sheetSource = '/assets/slime_sheet2.webp';
       }
     }
     this.sheetImg = getCachedMonsterImage(template.sheet || sheetSource);

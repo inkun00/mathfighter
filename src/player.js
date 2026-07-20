@@ -11,14 +11,14 @@ import { getWeaponAccentColor } from './weaponEffects.js';
 
 const projectileIconCache = new Map();
 const firePatchSheet = new Image();
-firePatchSheet.src = '/assets/effects/fire_patch_sheet.png';
+firePatchSheet.src = '/assets/effects/fire_patch_sheet.webp';
 const electromagneticLaserSheet = new Image();
-electromagneticLaserSheet.src = '/assets/effects/electromagnetic_laser_beam.png';
+electromagneticLaserSheet.src = '/assets/effects/electromagnetic_laser_beam.webp';
 
 function getProjectileIconImage(id) {
   if (!projectileIconCache.has(id)) {
     const img = new Image();
-    img.src = `/assets/projectiles/projectile_${String(id).padStart(2, '0')}.png`;
+    img.src = `/assets/projectiles/projectile_${String(id).padStart(2, '0')}.webp`;
     projectileIconCache.set(id, img);
   }
   return projectileIconCache.get(id);
@@ -668,7 +668,7 @@ export class Player {
 
     // Load sprite sheets depending on gender choice
     this.sheetImg = new Image();
-    this.sheetImg.src = gender === 'female' ? '/assets/player_sheet_female.png' : '/assets/player_sheet.png';
+    this.sheetImg.src = gender === 'female' ? '/assets/player_sheet_female.webp' : '/assets/player_sheet.webp';
     this.spriteSize = 80; // Rendered sprite display size in pixels
 
     // Animation states

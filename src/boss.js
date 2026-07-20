@@ -64,9 +64,9 @@ export class Boss {
 
     // Load nano banana2 boss sprite frames
     this.img1 = new Image();
-    this.img1.src = '/assets/boss.png';
+    this.img1.src = '/assets/boss.webp';
     this.img2 = new Image();
-    this.img2.src = '/assets/boss2.png';
+    this.img2.src = '/assets/boss2.webp';
     this.currentImg = this.img1;
 
     this.facing = 1; // 1 = Right, -1 = Left
