@@ -7,11 +7,11 @@ import {
 } from './weaponEffects.js';
 
 const BACKGROUND_SOURCES = [
-  { minStage: 40, src: '/assets/backgrounds/stage_40_cosmic.png' },
-  { minStage: 30, src: '/assets/backgrounds/stage_30_forge.png' },
-  { minStage: 20, src: '/assets/backgrounds/stage_20_ruins.png' },
-  { minStage: 10, src: '/assets/backgrounds/stage_10_cavern.png' },
-  { minStage: 1, src: '/assets/backgrounds/stage_01_academy.png' }
+  { minStage: 40, src: '/assets/backgrounds/stage_40_cosmic.webp' },
+  { minStage: 30, src: '/assets/backgrounds/stage_30_forge.webp' },
+  { minStage: 20, src: '/assets/backgrounds/stage_20_ruins.webp' },
+  { minStage: 10, src: '/assets/backgrounds/stage_10_cavern.webp' },
+  { minStage: 1, src: '/assets/backgrounds/stage_01_academy.webp' }
 ];
 
 export function createGameRenderer({ getState, getCameraOffset }) {
