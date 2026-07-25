@@ -114,6 +114,58 @@ test('starts a regular game and pauses and resumes', async ({ page }) => {
   await expect(page.locator('#pauseModal')).toBeHidden();
 });
 
+test('shop test mode grants full purchase funds while keeping weapons unowned', async ({ page }) => {
+  await page.goto('/?debug=true&shopTest=true');
+
+  const initialState = await page.evaluate(() => ({
+    gold: window.gameStateStore.gold,
+    ownedWeaponIds: window.gameStateStore.ownedWeaponIds,
+    equippedWeaponIds: window.gameStateStore.equippedWeaponIds
+  }));
+  expect(initialState.gold).toBe(1e25);
+  expect(initialState.ownedWeaponIds).toEqual([1]);
+  expect(initialState.equippedWeaponIds).toEqual([1]);
+
+  await page.locator('#playerNameInput').fill('Shop Tester');
+  await page.locator('#startGameBtn').click();
+  await expect(page.locator('#goldText')).toHaveText('10000000000000000000000000');
+
+  const purchaseResult = await page.evaluate(async () => {
+    const shop = await import('/src/shop.js');
+    return {
+      purchased: shop.purchaseWeapon(30),
+      owned: shop.getOwnedWeapons().includes(30),
+      remainingGold: shop.getGold()
+    };
+  });
+  expect(purchaseResult.purchased).toBe(true);
+  expect(purchaseResult.owned).toBe(true);
+  expect(purchaseResult.remainingGold).toBeGreaterThan(1e24);
+});
+
+test('batches rapid combat gold rewards into one browser storage write', async ({ page }) => {
+  await page.goto('/');
+  const writes = await page.evaluate(async () => {
+    const shop = await import('/src/shop.js');
+    const originalSetItem = Storage.prototype.setItem;
+    let saveWrites = 0;
+    Storage.prototype.setItem = function setItem(key, value) {
+      if (key === 'math_fighter_save') saveWrites++;
+      return originalSetItem.call(this, key, value);
+    };
+
+    for (let index = 0; index < 50; index++) shop.addGold(1);
+    const immediate = saveWrites;
+    await new Promise(resolve => setTimeout(resolve, 260));
+    const afterBatch = saveWrites;
+    Storage.prototype.setItem = originalSetItem;
+    return { immediate, afterBatch };
+  });
+
+  expect(writes.immediate).toBe(0);
+  expect(writes.afterBatch).toBe(1);
+});
+
 test('opens the certificate registration board from the start screen', async ({ page, context }) => {
   await context.route('https://samboard.vivasam.com/**', route => route.fulfill({
     contentType: 'text/html',
@@ -518,6 +570,336 @@ test('renders the electromagnetic rifle without a magenta sprite background', as
 
   expect(pixels.visible).toBeGreaterThan(1000);
   expect(pixels.magenta).toBe(0);
+});
+
+test('throws smoke grenades and omits circular projectile outlines', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const [{ Projectile }, { WEAPONS_DB }, { getWeaponBehavior }] = await Promise.all([
+      import('/src/player.js'),
+      import('/src/shop.js'),
+      import('/src/weaponProfiles.js')
+    ]);
+    await new Promise(resolve => setTimeout(resolve, 250));
+
+    const player = { x: 100, y: 100, atkMultiplier: 1 };
+    const smokeWeapon = WEAPONS_DB.find(weapon => weapon.id === 14);
+    const smoke = new Projectile(
+      player.x,
+      player.y,
+      330,
+      player.y,
+      smokeWeapon,
+      player,
+      { behavior: getWeaponBehavior(smokeWeapon.id, smokeWeapon.type), maxRange: 230 }
+    );
+    smoke.update([], player);
+    const airborne = {
+      behavior: smoke.behavior,
+      isParabolic: smoke.isParabolic,
+      movedForward: smoke.x > player.x,
+      height: smoke.z
+    };
+    for (let frame = 0; frame < 80 && smoke.behavior !== 'mine'; frame++) {
+      smoke.update([], player);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 420;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    const originalArc = ctx.arc.bind(ctx);
+    const originalBeginPath = ctx.beginPath.bind(ctx);
+    const originalStroke = ctx.stroke.bind(ctx);
+    let currentPathHasFullCircle = false;
+    let circularOutlineStrokes = 0;
+    ctx.beginPath = (...args) => {
+      currentPathHasFullCircle = false;
+      return originalBeginPath(...args);
+    };
+    ctx.arc = (...args) => {
+      const [, , , startAngle, endAngle] = args;
+      if (Math.abs(endAngle - startAngle) >= Math.PI * 1.99) {
+        currentPathHasFullCircle = true;
+      }
+      return originalArc(...args);
+    };
+    ctx.stroke = (...args) => {
+      if (currentPathHasFullCircle) circularOutlineStrokes++;
+      currentPathHasFullCircle = false;
+      return originalStroke(...args);
+    };
+
+    WEAPONS_DB.forEach((weapon, index) => {
+      const behavior = getWeaponBehavior(weapon.id, weapon.type);
+      const projectile = new Projectile(
+        40 + (index % 10) * 38,
+        40 + Math.floor(index / 10) * 70,
+        380,
+        120,
+        weapon,
+        player,
+        { behavior }
+      );
+      projectile.draw(ctx);
+    });
+
+    return {
+      airborne,
+      landedBehavior: smoke.behavior,
+      landedHeight: smoke.z,
+      circularOutlineStrokes
+    };
+  });
+
+  expect(result.airborne.behavior).toBe('smoke_grenade');
+  expect(result.airborne.isParabolic).toBe(true);
+  expect(result.airborne.movedForward).toBe(true);
+  expect(result.airborne.height).toBeGreaterThan(0);
+  expect(result.landedBehavior).toBe('mine');
+  expect(result.landedHeight).toBe(0);
+  expect(result.circularOutlineStrokes).toBe(0);
+});
+
+test('coalesces and expires sustained orbit and shockwave impact animations', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const { createGameRenderer } = await import('/src/gameRenderer.js');
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 600;
+    const ctx = canvas.getContext('2d');
+    const state = {
+      canvas,
+      ctx,
+      worldWidth: 800,
+      worldHeight: 600,
+      currentStage: 1,
+      gameState: 'playing',
+      player: null,
+      boss: null,
+      monsters: [],
+      monsterProjectiles: [],
+      dropItems: [],
+      projectiles: []
+    };
+    const renderer = createGameRenderer({
+      getCameraOffset: () => ({ x: 0, y: 0 }),
+      getState: () => state
+    });
+    const createProjectile = (id, behavior, index) => ({
+      id,
+      behavior,
+      x: 300 + index,
+      y: 300,
+      angle: 0,
+      radius: 18,
+      splashRadius: behavior === 'shockwave' ? 80 : 0
+    });
+
+    const impacts = [
+      ...Array.from({ length: 12 }, (_, index) => createProjectile(16, 'orbit', index)),
+      ...Array.from({ length: 24 }, (_, index) => createProjectile(18, 'shockwave', index))
+    ];
+    state.projectiles = impacts;
+    impacts.forEach(projectile => {
+      renderer.spawnHitEffect(projectile.x, projectile.y, projectile);
+    });
+    const activeAfterBurst = renderer.getEffectCounts().hitEffects;
+
+    state.projectiles = [];
+    await new Promise(resolve => setTimeout(resolve, 350));
+    renderer.draw();
+    return {
+      activeAfterBurst,
+      activeAfterExpiry: renderer.getEffectCounts().hitEffects
+    };
+  });
+
+  expect(result.activeAfterBurst).toBe(2);
+  expect(result.activeAfterExpiry).toBe(0);
+});
+
+test('keeps max smoke, orbit, and shockwave fire-hit bursts inside one frame budget', async ({ page }) => {
+  await page.goto('/');
+  const benchmark = await page.evaluate(async () => {
+    const [
+      { Player, preloadProjectileAssets },
+      shop,
+      { resolveProjectileCollisions },
+      { createGameRenderer }
+    ] = await Promise.all([
+      import('/src/player.js'),
+      import('/src/shop.js'),
+      import('/src/combatResolver.js'),
+      import('/src/gameRenderer.js')
+    ]);
+    localStorage.setItem('math_fighter_save', JSON.stringify({
+      gold: 1e9,
+      equippedWeaponIds: [14, 16, 18],
+      ownedWeaponIds: [1, 14, 16, 18],
+      weaponLevels: { 1: 1, 14: 10, 16: 10, 18: 10 },
+      upgrades: { maxHp: 0, atk: 0, def: 0, magnet: 0, goldBonus: 0 },
+      wrongAreas: []
+    }));
+    shop.loadState();
+    await preloadProjectileAssets();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 960;
+    canvas.height = 640;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    const player = new Player(480, 320, 'Performance Tester');
+    const state = {
+      canvas,
+      ctx,
+      worldWidth: 960,
+      worldHeight: 640,
+      currentStage: 40,
+      gameState: 'playing',
+      player: null,
+      boss: null,
+      monsters: [],
+      monsterProjectiles: [],
+      dropItems: [],
+      projectiles: []
+    };
+    const renderer = createGameRenderer({
+      getCameraOffset: () => ({ x: 0, y: 0 }),
+      getState: () => state
+    });
+    const monsters = Array.from({ length: 80 }, (_, index) => ({
+      x: 620 + (index % 8) * 2,
+      y: 320 + Math.floor(index / 8) * 2,
+      radius: 18,
+      hp: 1e12,
+      takeDamage(amount) {
+        this.hp -= amount;
+      },
+      applyStatusEffect() {}
+    }));
+    const durations = [];
+    let projectileCount = 0;
+
+    for (let iteration = 0; iteration < 20; iteration++) {
+      const startedAt = performance.now();
+      const projectiles = [];
+      player.lastShotTimes = {};
+      player.shoot(monsters, projectiles);
+      projectileCount = projectiles.length;
+      projectiles.forEach(projectile => {
+        projectile.x = monsters[0].x;
+        projectile.y = monsters[0].y;
+        projectile.z = 0;
+        projectile.isParabolic = false;
+      });
+      state.projectiles = projectiles;
+      resolveProjectileCollisions({
+        projectiles,
+        monsters,
+        boss: null,
+        onMonsterDefeat() {},
+        onHitEffect: renderer.spawnHitEffect
+      });
+      renderer.draw();
+      durations.push(performance.now() - startedAt);
+      renderer.resetEffects();
+    }
+
+    return {
+      projectileCount,
+      averageBurstMs: durations.reduce((sum, duration) => sum + duration, 0) / durations.length,
+      slowestBurstMs: Math.max(...durations)
+    };
+  });
+
+  expect(benchmark.projectileCount).toBe(16);
+  expect(benchmark.averageBurstMs).toBeLessThan(12);
+  expect(benchmark.slowestBurstMs).toBeLessThan(20);
+});
+
+test('renders every max-pattern weapon together within a stable browser frame budget', async ({ page }) => {
+  await page.goto('/');
+  const benchmark = await page.evaluate(async () => {
+    const [
+      { Projectile, preloadProjectileAssets },
+      { WEAPONS_DB },
+      { getWeaponBehavior, getWeaponPatternProfile },
+      { getCombatRenderQuality },
+      { createWeaponImpactEffect, drawWeaponImpactEffect }
+    ] = await Promise.all([
+      import('/src/player.js'),
+      import('/src/shop.js'),
+      import('/src/weaponProfiles.js'),
+      import('/src/gameRenderer.js'),
+      import('/src/weaponEffects.js')
+    ]);
+    await preloadProjectileAssets();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+    const player = { x: 640, y: 360, atkMultiplier: 1 };
+    const projectiles = [];
+
+    WEAPONS_DB.forEach((weapon, weaponIndex) => {
+      const behavior = getWeaponBehavior(weapon.id, weapon.type);
+      const pattern = getWeaponPatternProfile(weapon.id, behavior, 3);
+      for (let index = 0; index < pattern.count; index++) {
+        const angle = (Math.PI * 2 * (weaponIndex + index / pattern.count)) / WEAPONS_DB.length;
+        const radius = 90 + (weaponIndex % 5) * 55;
+        const x = player.x + Math.cos(angle) * radius;
+        const y = player.y + Math.sin(angle) * radius;
+        const projectile = new Projectile(
+          x,
+          y,
+          player.x + Math.cos(angle) * 500,
+          player.y + Math.sin(angle) * 500,
+          weapon,
+          player,
+          { behavior, angleOffset: angle, maxRange: 520 }
+        );
+        projectile.createdTime = Date.now() - Math.min(180, projectile.lifeTime / 2);
+        projectile.trailPositions = Array.from({ length: 15 }, (_, trailIndex) => ({
+          x: x - Math.cos(angle) * trailIndex * 6,
+          y: y - Math.sin(angle) * trailIndex * 6,
+          z: 0
+        }));
+        projectiles.push(projectile);
+      }
+    });
+
+    const effects = projectiles.slice(0, 48).map(projectile => (
+      createWeaponImpactEffect(projectile.x, projectile.y, projectile)
+    ));
+    const quality = getCombatRenderQuality(projectiles.length, effects.length);
+    const durations = [];
+
+    for (let frame = 0; frame < 12; frame++) {
+      const startedAt = performance.now();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      projectiles.forEach(projectile => projectile.draw(ctx, { quality }));
+      const now = Date.now();
+      effects.forEach(effect => drawWeaponImpactEffect(ctx, effect, now, quality));
+      durations.push(performance.now() - startedAt);
+    }
+
+    return {
+      weaponCount: WEAPONS_DB.length,
+      projectileCount: projectiles.length,
+      quality,
+      averageFrameMs: durations.reduce((sum, duration) => sum + duration, 0) / durations.length,
+      slowestFrameMs: Math.max(...durations)
+    };
+  });
+
+  expect(benchmark.weaponCount).toBe(30);
+  expect(benchmark.projectileCount).toBeGreaterThan(100);
+  expect(benchmark.quality).toBe(0.45);
+  expect(benchmark.averageFrameMs).toBeLessThan(12);
+  expect(benchmark.slowestFrameMs).toBeLessThan(20);
 });
 
 test('keeps Korean units on large-number game drops but expands brain answers', async ({ page }) => {

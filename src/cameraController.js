@@ -15,6 +15,7 @@ export function createCameraController({ getCanvas, getPlayer, getWorldSize, set
     const canvas = getCanvas();
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    canvas.getContext('2d').imageSmoothingEnabled = false;
     setWorldSize(canvas.width * ARENA_SCALE, canvas.height * ARENA_SCALE);
     resetCameraOffset();
   }

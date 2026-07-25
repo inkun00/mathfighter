@@ -5,7 +5,15 @@ const ELECTRIC_BEHAVIORS = new Set(['chain_lightning', 'rail_laser', 'plasma_rai
 const GRAVITY_BEHAVIORS = new Set(['gravity_well']);
 const VOID_BEHAVIORS = new Set(['void_pierce']);
 const SLASH_BEHAVIORS = new Set(['straight', 'cone_blast', 'dash_wave', 'boomerang']);
-const BALLISTIC_BEHAVIORS = new Set(['homing', 'pierce', 'spread', 'missile_swarm']);
+const BALLISTIC_BEHAVIORS = new Set(['homing', 'pierce', 'spread', 'missile_swarm', 'smoke_grenade']);
+const CONTINUOUS_IMPACT_BEHAVIORS = new Set([
+  'orbit',
+  'shockwave',
+  'nova',
+  'dash_wave',
+  'boomerang',
+  'void_pierce'
+]);
 
 export function getWeaponEffectFamily(behavior, id, variant = null) {
   if (variant) return variant;
@@ -59,19 +67,28 @@ export function createWeaponImpactEffect(x, y, projectile, scale = 1, details = 
   const visual = getWeaponVisualProfile(projectile.id);
   const family = getWeaponEffectFamily(projectile.behavior, projectile.id, projectile.effectVariant);
   const isAreaHit = projectile.splashRadius > 0 || ['fire', 'gravity', 'nova'].includes(family);
+  const isContinuousImpact = CONTINUOUS_IMPACT_BEHAVIORS.has(projectile.behavior);
+  const densityScale = isContinuousImpact ? 0.58 : 1;
   return {
     x,
     y,
+    id: projectile.id,
+    behavior: projectile.behavior,
     origin: details.origin || null,
     angle: projectile.angle || 0,
     color: getWeaponAccentColor(projectile.id, projectile.behavior, projectile.effectVariant),
     family,
     radius: visual.drawSize * (isAreaHit ? 1.65 : 1.15) * visual.impactScale * scale,
-    particleCount: Math.round((4 + visual.rank * 3) * visual.impactScale * scale),
+    particleCount: Math.max(6, Math.round(
+      (4 + visual.rank * 3) * visual.impactScale * scale * densityScale
+    )),
     tier: visual.rank,
     isAreaHit,
+    isContinuousImpact,
     createdTime: Date.now(),
-    lifeTime: visual.lifeTime,
+    lifeTime: isContinuousImpact
+      ? Math.min(320, Math.round(visual.lifeTime * 0.54))
+      : visual.lifeTime,
     seed: Math.random() * Math.PI * 2
   };
 }
@@ -96,17 +113,22 @@ function drawJaggedLine(ctx, x1, y1, x2, y2, seed, width, color) {
   ctx.stroke();
 }
 
-export function drawWeaponFireEffect(ctx, effect, now) {
+function getRenderedParticleCount(particleCount, quality, minimum = 3) {
+  return Math.max(minimum, Math.round(particleCount * Math.max(0.4, Math.min(1, quality))));
+}
+
+export function drawWeaponFireEffect(ctx, effect, now, quality = 1) {
   const progress = Math.min(1, (now - effect.createdTime) / effect.lifeTime);
   const alpha = 1 - progress;
   const radius = effect.radius * (0.65 + progress * 0.9);
+  const renderQuality = Math.max(0.45, Math.min(1, quality));
   ctx.save();
   ctx.translate(effect.x, effect.y);
   ctx.rotate(effect.angle);
   ctx.globalAlpha = alpha;
-  ctx.globalCompositeOperation = effect.tier >= 4 ? 'lighter' : 'source-over';
+  ctx.globalCompositeOperation = 'source-over';
   ctx.shadowColor = effect.color;
-  ctx.shadowBlur = 6 + effect.tier * 4;
+  ctx.shadowBlur = 0;
 
   if (effect.family === 'slash') {
     ctx.strokeStyle = effect.color;
@@ -137,7 +159,8 @@ export function drawWeaponFireEffect(ctx, effect, now) {
   }
 
   ctx.fillStyle = '#ffffff';
-  for (let i = 0; i < effect.particleCount; i++) {
+  const renderedParticleCount = getRenderedParticleCount(effect.particleCount, renderQuality);
+  for (let i = 0; i < renderedParticleCount; i++) {
     const angle = effect.seed + i * 2.399;
     const distance = radius * (0.3 + ((i * 17) % 11) / 12);
     ctx.beginPath();
@@ -147,11 +170,12 @@ export function drawWeaponFireEffect(ctx, effect, now) {
   ctx.restore();
 }
 
-function drawImpactParticles(ctx, effect, progress, alpha) {
+function drawImpactParticles(ctx, effect, progress, alpha, quality) {
   ctx.fillStyle = effect.family === 'fire' ? '#ffd166' : '#ffffff';
   ctx.globalAlpha = alpha;
-  for (let i = 0; i < effect.particleCount; i++) {
-    const angle = effect.seed + (Math.PI * 2 * i) / effect.particleCount;
+  const renderedParticleCount = getRenderedParticleCount(effect.particleCount, quality, 4);
+  for (let i = 0; i < renderedParticleCount; i++) {
+    const angle = effect.seed + (Math.PI * 2 * i) / renderedParticleCount;
     const distance = effect.radius * (0.18 + progress * (0.62 + (i % 3) * 0.11));
     const stretch = effect.family === 'ballistic' ? 1.45 : 1;
     ctx.beginPath();
@@ -168,16 +192,17 @@ function drawImpactParticles(ctx, effect, progress, alpha) {
   }
 }
 
-export function drawWeaponImpactEffect(ctx, effect, now) {
+export function drawWeaponImpactEffect(ctx, effect, now, quality = 1) {
   const progress = Math.min(1, (now - effect.createdTime) / effect.lifeTime);
   const alpha = 1 - progress;
   const radius = effect.radius * (0.28 + progress * 0.95);
+  const renderQuality = Math.max(0.45, Math.min(1, quality));
   ctx.save();
   ctx.translate(effect.x, effect.y);
   ctx.globalAlpha = alpha;
   ctx.shadowColor = effect.color;
-  ctx.shadowBlur = 7 + effect.tier * 3;
-  ctx.globalCompositeOperation = effect.tier >= 4 ? 'lighter' : 'source-over';
+  ctx.shadowBlur = 0;
+  ctx.globalCompositeOperation = 'source-over';
 
   if (effect.family === 'electric') {
     if (effect.origin) {
@@ -187,14 +212,16 @@ export function drawWeaponImpactEffect(ctx, effect, now) {
     }
     ctx.strokeStyle = effect.color;
     ctx.lineWidth = 2 + effect.tier * 0.6;
-    for (let i = 0; i < Math.min(8, effect.tier + 2); i++) {
-      const angle = effect.seed + i * Math.PI * 2 / (effect.tier + 2);
+    const arcCount = Math.max(3, Math.round(Math.min(8, effect.tier + 2) * renderQuality));
+    for (let i = 0; i < arcCount; i++) {
+      const angle = effect.seed + i * Math.PI * 2 / arcCount;
       drawJaggedLine(ctx, 0, 0, Math.cos(angle) * radius, Math.sin(angle) * radius, effect.seed + i, 1.2 + effect.tier * 0.25, i % 2 ? '#ffffff' : effect.color);
     }
   } else if (effect.family === 'gravity') {
     ctx.strokeStyle = effect.color;
     ctx.lineWidth = 3;
-    for (let i = 0; i < 3; i++) {
+    const gravityRingCount = renderQuality < 0.6 ? 2 : 3;
+    for (let i = 0; i < gravityRingCount; i++) {
       ctx.globalAlpha = alpha * (0.85 - i * 0.18);
       ctx.beginPath();
       ctx.arc(0, 0, radius * (1 - i * 0.22), effect.seed - progress * 5 + i, effect.seed - progress * 5 + i + Math.PI * 1.45);
@@ -233,7 +260,8 @@ export function drawWeaponImpactEffect(ctx, effect, now) {
   } else if (effect.family === 'nova') {
     ctx.strokeStyle = effect.color;
     ctx.lineWidth = 2 + effect.tier * 0.55;
-    for (let ring = 0; ring < 3; ring++) {
+    const novaRingCount = renderQuality < 0.6 ? 2 : 3;
+    for (let ring = 0; ring < novaRingCount; ring++) {
       const sides = 6 + ring * 2;
       ctx.beginPath();
       for (let i = 0; i <= sides; i++) {
@@ -260,6 +288,6 @@ export function drawWeaponImpactEffect(ctx, effect, now) {
     }
   }
 
-  drawImpactParticles(ctx, effect, progress, alpha);
+  drawImpactParticles(ctx, effect, progress, alpha, renderQuality);
   ctx.restore();
 }

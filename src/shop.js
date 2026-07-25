@@ -66,19 +66,31 @@ const DEFAULT_STATE = {
   },
   wrongAreas: [] // Cumulative weak math areas
 };
+const SHOP_TEST_GOLD = 10_000_000_000_000_000_000_000_000;
 
 // Global Store State
 let state = { ...DEFAULT_STATE };
+let pendingSaveTimer = null;
 
 function isDebugMode() {
   return typeof window !== 'undefined' && window.location.search.includes('debug=true');
 }
 
+function isShopTestMode() {
+  return typeof window !== 'undefined' && window.location.search.includes('shopTest=true');
+}
+
 function applyDebugState() {
-  state.ownedWeaponIds = WEAPONS_DB.map(w => w.id);
-  state.equippedWeaponIds = [23, 25, 30]; // Chain lightning, gravity well, nova
-  state.weaponLevels = Object.fromEntries(WEAPONS_DB.map(w => [w.id, 1]));
-  state.gold = 999999;
+  if (isShopTestMode()) {
+    state.ownedWeaponIds = [1];
+    state.equippedWeaponIds = [1];
+    state.weaponLevels = { 1: 1 };
+  } else {
+    state.ownedWeaponIds = WEAPONS_DB.map(w => w.id);
+    state.equippedWeaponIds = [23, 25, 30]; // Chain lightning, gravity well, nova
+    state.weaponLevels = Object.fromEntries(WEAPONS_DB.map(w => [w.id, 1]));
+  }
+  state.gold = SHOP_TEST_GOLD;
 }
 
 // Load state from LocalStorage
@@ -127,7 +139,19 @@ export function loadState() {
 
 // Save state to LocalStorage
 export function saveState() {
+  if (pendingSaveTimer !== null) {
+    clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = null;
+  }
   localStorage.setItem("math_fighter_save", JSON.stringify(state));
+}
+
+function scheduleStateSave() {
+  if (pendingSaveTimer !== null) return;
+  pendingSaveTimer = setTimeout(() => {
+    pendingSaveTimer = null;
+    localStorage.setItem("math_fighter_save", JSON.stringify(state));
+  }, 200);
 }
 
 // Reset state
@@ -148,7 +172,7 @@ export function getGold() { return state.gold; }
 export function addGold(amount) {
   const bonus = 1 + getStatValue("goldBonus");
   state.gold += Math.floor(amount * bonus);
-  saveState();
+  scheduleStateSave();
 }
 export function subtractGold(amount) {
   if (state.gold >= amount) {
@@ -164,18 +188,6 @@ export function getEquippedWeapon() {
 }
 
 export function getEquippedWeapons() {
-  if (typeof window !== 'undefined') {
-    const raw = localStorage.getItem("math_fighter_save");
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.equippedWeaponIds) {
-          state.equippedWeaponIds = parsed.equippedWeaponIds.map(Number);
-        }
-      } catch (e) {}
-    }
-  }
-
   const ids = state.equippedWeaponIds || [state.equippedWeaponId || 1];
   return ids
     .map(id => {

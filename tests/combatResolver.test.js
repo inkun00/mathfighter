@@ -107,6 +107,24 @@ test('applies explosive splash damage to nearby monsters', () => {
   assert.equal(projectile.isDead, true);
 });
 
+test('does not repeatedly damage the same target with one persistent splash projectile', () => {
+  const primary = createTarget({ x: 0, hp: 100 });
+  const nearby = createTarget({ x: 20, hp: 100 });
+  const projectile = createProjectile({
+    id: 30,
+    behavior: 'nova',
+    splashRadius: 50,
+    pierceLimit: 999
+  });
+
+  resolve({ projectile, monsters: [primary, nearby] });
+  resolve({ projectile, monsters: [primary, nearby] });
+
+  assert.deepEqual(primary.damageTaken, [10]);
+  assert.deepEqual(nearby.damageTaken, [8.6]);
+  assert.equal(projectile.isDead, false);
+});
+
 test('rail laser hits monsters on its segment but respects the stage 10 boss shield', () => {
   const monster = createTarget({ x: 50, y: 5, radius: 5 });
   const boss = createTarget({

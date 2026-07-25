@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createWeaponFireEffect,
+  createWeaponImpactEffect,
   getWeaponAccentColor,
   getWeaponEffectFamily
 } from '../src/weaponEffects.js';
@@ -32,4 +33,31 @@ test('creates stronger firing feedback for legendary weapons', () => {
   assert.ok(legendary.lifeTime > normal.lifeTime);
   assert.ok(legendary.shake > normal.shake);
   assert.notEqual(getWeaponAccentColor(25, 'gravity_well'), getWeaponAccentColor(23, 'chain_lightning'));
+});
+
+test('shortens and thins persistent impact animations', () => {
+  const standard = createWeaponImpactEffect(0, 0, {
+    id: 16,
+    behavior: 'pierce',
+    splashRadius: 0,
+    angle: 0
+  });
+  const orbit = createWeaponImpactEffect(0, 0, {
+    id: 16,
+    behavior: 'orbit',
+    splashRadius: 0,
+    angle: 0
+  });
+  const shockwave = createWeaponImpactEffect(0, 0, {
+    id: 18,
+    behavior: 'shockwave',
+    splashRadius: 80,
+    angle: 0
+  });
+
+  assert.equal(orbit.isContinuousImpact, true);
+  assert.equal(shockwave.isContinuousImpact, true);
+  assert.ok(orbit.lifeTime < standard.lifeTime);
+  assert.ok(orbit.particleCount < standard.particleCount);
+  assert.ok(shockwave.lifeTime <= 320);
 });

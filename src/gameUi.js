@@ -22,6 +22,15 @@ import {
 } from './weaponProfiles.js';
 import { renderMathText } from './mathTextFormatter.js';
 
+function formatGold(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '0';
+  return amount.toLocaleString('ko-KR', {
+    useGrouping: false,
+    maximumFractionDigits: 0
+  });
+}
+
 export function isVisibleGameplayScreen(player, currentProblem) {
   const gameContainer = document.getElementById('gameContainer');
   const levelUpModal = document.getElementById('levelUpModal');
@@ -44,6 +53,23 @@ export function createGameUi({
   hideStartScreen,
   saveSessionSnapshot
 }) {
+  const hudCache = new Map();
+
+  function setHudText(id, value) {
+    const text = String(value);
+    if (hudCache.get(id) === text) return;
+    hudCache.set(id, text);
+    document.getElementById(id).innerText = text;
+  }
+
+  function setHudWidth(id, value) {
+    const width = `${value}%`;
+    const cacheKey = `${id}:width`;
+    if (hudCache.get(cacheKey) === width) return;
+    hudCache.set(cacheKey, width);
+    document.getElementById(id).style.width = width;
+  }
+
   function getWeaponDps(weapon) {
     return getWeaponBalanceMetrics(weapon, getWeaponLevel(weapon.id)).focusDps;
   }
@@ -76,25 +102,28 @@ export function createGameUi({
     const { player, currentProblem, boss, stageTimer, problemProgress, combo } = getState();
     if (!player || !currentProblem) return;
 
-    renderMathText(document.getElementById('problemText'), currentProblem.text);
-    document.getElementById('problemTimer').innerText = boss ? 'BOSS' : stageTimer;
+    if (hudCache.get('problemText') !== currentProblem.text) {
+      hudCache.set('problemText', currentProblem.text);
+      renderMathText(document.getElementById('problemText'), currentProblem.text);
+    }
+    setHudText('problemTimer', boss ? 'BOSS' : stageTimer);
 
     const activeProgress = boss?.isGimmickActive ? boss.gimmickAnswerCount : problemProgress;
     const gaugePercent = (activeProgress / currentProblem.requiredCount) * 100;
-    document.getElementById('problemGauge').style.width = `${Math.min(100, gaugePercent)}%`;
+    setHudWidth('problemGauge', Math.min(100, gaugePercent));
 
     const expPercent = (player.exp / player.nextLevelExp) * 100;
-    document.getElementById('expBar').style.width = `${Math.min(100, expPercent)}%`;
-    document.getElementById('levelText').innerText = `LV.${player.level}`;
+    setHudWidth('expBar', Math.min(100, expPercent));
+    setHudText('levelText', `LV.${player.level}`);
 
     player.hp = Math.floor(Math.min(player.maxHp, Math.max(0, player.hp)));
     const hpPercent = (player.hp / player.maxHp) * 100;
-    document.getElementById('hpBar').style.width = `${Math.max(0, hpPercent)}%`;
-    document.getElementById('hpText').innerText = `HP: ${Math.floor(player.hp)}/${Math.floor(player.maxHp)}`;
+    setHudWidth('hpBar', Math.max(0, hpPercent));
+    setHudText('hpText', `HP: ${Math.floor(player.hp)}/${Math.floor(player.maxHp)}`);
 
     player.gold = getGold();
-    document.getElementById('goldText').innerText = player.gold;
-    document.getElementById('comboText').innerText = `${combo} COMBO`;
+    setHudText('goldText', formatGold(player.gold));
+    setHudText('comboText', `${combo} COMBO`);
     document.getElementById('debug-weapon-status')?.remove();
   }
 
@@ -298,7 +327,7 @@ export function createGameUi({
     hideStartScreen();
     document.getElementById('gameContainer').classList.add('hidden');
     document.getElementById('shopScreen').classList.remove('hidden');
-    document.getElementById('shopGoldText').innerText = getGold();
+    document.getElementById('shopGoldText').innerText = formatGold(getGold());
     renderShopStatusPanel();
 
     const brainTrainingBtn = document.getElementById('brainTrainingBtn');

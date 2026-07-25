@@ -14,6 +14,7 @@ const firePatchSheet = new Image();
 firePatchSheet.src = '/assets/effects/fire_patch_sheet.webp';
 const electromagneticLaserSheet = new Image();
 electromagneticLaserSheet.src = '/assets/effects/electromagnetic_laser_beam.webp';
+let projectileAssetPreloadPromise = null;
 
 function getProjectileIconImage(id) {
   if (!projectileIconCache.has(id)) {
@@ -23,6 +24,23 @@ function getProjectileIconImage(id) {
   }
   return projectileIconCache.get(id);
 }
+
+export function preloadProjectileAssets() {
+  if (projectileAssetPreloadPromise) return projectileAssetPreloadPromise;
+  const images = [
+    firePatchSheet,
+    electromagneticLaserSheet,
+    ...Array.from({ length: 30 }, (_, index) => getProjectileIconImage(index + 1))
+  ];
+  projectileAssetPreloadPromise = Promise.all(images.map(image => (
+    typeof image.decode === 'function'
+      ? image.decode().catch(() => undefined)
+      : Promise.resolve()
+  )));
+  return projectileAssetPreloadPromise;
+}
+
+void preloadProjectileAssets();
 
 const HOMING_BEHAVIORS = new Set(['homing', 'chain_lightning', 'missile_swarm']);
 const RAIL_BEHAVIORS = new Set(['rail_laser', 'plasma_rail']);
@@ -100,11 +118,12 @@ export class Projectile {
       this.visualProfile = getWeaponVisualProfile(weapon.id);
       this.trailPositions = [];
       this.lastTrailSampleTime = 0;
-      this.isParabolic = this.behavior === 'throw_fire';
+      this.isParabolic = ['throw_fire', 'smoke_grenade'].includes(this.behavior);
       this.z = 0;
 
       // Homing setup
       this.targetMonster = null;
+      this.nextTargetSearchTime = 0;
 
       // Calculate angle/velocity towards targets
       const dx = targetX - x;
@@ -149,7 +168,8 @@ export class Projectile {
 
   update(monsters, playerPos) {
     try {
-      const elapsed = Date.now() - this.createdTime;
+      const now = Date.now();
+      const elapsed = now - this.createdTime;
       if (elapsed > this.lifeTime) {
         this.isDead = true;
         return;
@@ -158,14 +178,14 @@ export class Projectile {
       if (
         this.visualProfile.trailCount > 0 &&
         !STATIONARY_BEHAVIORS.has(this.behavior) &&
-        Date.now() - this.lastTrailSampleTime >= 24
+        now - this.lastTrailSampleTime >= 32
       ) {
         this.trailPositions.push({ x: this.x, y: this.y, z: this.z || 0 });
         const maxTrailPoints = this.visualProfile.trailCount * 2 + 3;
         if (this.trailPositions.length > maxTrailPoints) {
           this.trailPositions.splice(0, this.trailPositions.length - maxTrailPoints);
         }
-        this.lastTrailSampleTime = Date.now();
+        this.lastTrailSampleTime = now;
       }
 
       if (STATIONARY_BEHAVIORS.has(this.behavior)) {
@@ -183,24 +203,27 @@ export class Projectile {
 
       // Homing logic: update target if needed
       if (HOMING_BEHAVIORS.has(this.behavior) && monsters.length > 0) {
-        // Find closest active monster
-        let closest = null;
-        let minDist = Infinity;
-        monsters.forEach(m => {
-          if (m.hp <= 0) return;
-          const dx = m.x - this.x;
-          const dy = m.y - this.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < minDist) {
-            minDist = dist;
-            closest = m;
+        const needsTarget = !this.targetMonster || this.targetMonster.hp <= 0;
+        if (needsTarget || now >= this.nextTargetSearchTime) {
+          let closest = null;
+          let minDistanceSquared = Infinity;
+          for (const monster of monsters) {
+            if (monster.hp <= 0) continue;
+            const dx = monster.x - this.x;
+            const dy = monster.y - this.y;
+            const distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < minDistanceSquared) {
+              minDistanceSquared = distanceSquared;
+              closest = monster;
+            }
           }
-        });
-
-        if (closest) {
           this.targetMonster = closest;
-          const dx = closest.x - this.x;
-          const dy = closest.y - this.y;
+          this.nextTargetSearchTime = now + 120;
+        }
+
+        if (this.targetMonster?.hp > 0) {
+          const dx = this.targetMonster.x - this.x;
+          const dy = this.targetMonster.y - this.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist > 0) {
             // Smoothly interpolate velocity
@@ -251,6 +274,8 @@ export class Projectile {
           this.hitTargets = new WeakSet();
         } else if (this.behavior === 'throw_fire') {
           this.activateFirePatch();
+        } else if (this.behavior === 'smoke_grenade') {
+          this.activateSmokeMine();
         } else {
           this.isDead = true;
         }
@@ -275,14 +300,30 @@ export class Projectile {
     this.trailPositions = [];
   }
 
+  activateSmokeMine() {
+    const levelBonus = getWeaponLevelBonus(this.id);
+    this.behavior = 'mine';
+    this.vx = 0;
+    this.vy = 0;
+    this.radius = Math.max(this.radius, 20);
+    this.splashRadius = Math.round(62 * levelBonus.splashScale);
+    this.lifeTime = 4200;
+    this.createdTime = Date.now();
+    this.angle = 0;
+    this.z = 0;
+    this.isParabolic = false;
+    this.trailPositions = [];
+  }
+
   canApplyAreaTick(now) {
     if (now - this.lastAreaTickTime < this.areaTickInterval) return false;
     this.lastAreaTickTime = now;
     return true;
   }
 
-  draw(ctx) {
+  draw(ctx, { quality = 1 } = {}) {
     const visualProfile = this.visualProfile || getWeaponVisualProfile(this.id);
+    const renderQuality = Math.max(0.45, Math.min(1, quality));
 
     // Tesla Fusion Gun (ID 23) special lightning drawing: Character's body to target monster
     if (this.id === 23) {
@@ -303,7 +344,10 @@ export class Projectile {
         const dx = x2 - x1;
         const dy = y2 - y1;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const steps = Math.max(3, Math.floor(dist / 14));
+        const steps = Math.max(3, Math.min(
+          28,
+          Math.floor((dist / 14) * (0.55 + renderQuality * 0.45))
+        ));
         
         for (let i = 1; i < steps; i++) {
           const t = i / steps;
@@ -326,7 +370,7 @@ export class Projectile {
       ctx.lineJoin = 'round';
       
       // Outer glow blue aura
-      ctx.shadowBlur = visualProfile.glowBlur;
+      ctx.shadowBlur = 0;
       ctx.shadowColor = '#00f6ff';
       drawLightningArc(startX, startY, targetX, targetY, 16, 4.8, 'rgba(0, 212, 255, 0.45)');
       
@@ -338,7 +382,9 @@ export class Projectile {
       drawLightningArc(startX, startY, targetX, targetY, 7, 1.2, '#ffffff');
 
       // Static discharges around target
-      const sparkCount = visualProfile.rank + 2 + Math.floor(Math.random() * 3);
+      const sparkCount = Math.max(3, Math.round(
+        (visualProfile.rank + 2 + Math.floor(Math.random() * 3)) * renderQuality
+      ));
       for (let s = 0; s < sparkCount; s++) {
         const angle = Math.random() * Math.PI * 2;
         const sparkLen = 9 + Math.random() * 15;
@@ -355,18 +401,21 @@ export class Projectile {
 
     if (this.trailPositions.length > 0) {
       const trailColor = getWeaponAccentColor(this.id, this.behavior, this.effectVariant);
+      const sampleStep = renderQuality < 0.6 ? 3 : renderQuality < 0.85 ? 2 : 1;
       ctx.save();
       ctx.fillStyle = trailColor;
       ctx.shadowColor = trailColor;
-      ctx.shadowBlur = visualProfile.glowBlur * 0.55;
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 0.34;
+      ctx.beginPath();
       this.trailPositions.forEach((point, index) => {
+        if (index % sampleStep !== 0 && index !== this.trailPositions.length - 1) return;
         const progress = (index + 1) / this.trailPositions.length;
-        ctx.globalAlpha = progress * 0.42;
         const size = Math.max(1.5, this.radius * progress * 0.72);
-        ctx.beginPath();
+        ctx.moveTo(point.x + size, point.y - point.z);
         ctx.arc(point.x, point.y - point.z, size, 0, Math.PI * 2);
-        ctx.fill();
       });
+      ctx.fill();
       ctx.restore();
     }
 
@@ -398,18 +447,11 @@ export class Projectile {
       ctx.strokeStyle = '#b35cff';
       ctx.fillStyle = 'rgba(35, 0, 70, 0.58)';
       ctx.shadowColor = '#d884ff';
-      ctx.shadowBlur = visualProfile.glowBlur;
+      ctx.shadowBlur = 0;
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.arc(0, 0, this.splashRadius * pulse, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
-      for (let ring = 1; ring <= 3; ring++) {
-        ctx.globalAlpha = 0.5 / ring;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.splashRadius * (0.28 + ring * 0.18) * pulse, 0, Math.PI * 2);
-        ctx.stroke();
-      }
       ctx.restore();
       return;
     }
@@ -425,7 +467,7 @@ export class Projectile {
 
       ctx.globalAlpha = Math.max(0.28, alpha);
       ctx.shadowColor = this.behavior === 'plasma_rail' ? '#ff4dff' : '#00eaff';
-      ctx.shadowBlur = visualProfile.glowBlur;
+      ctx.shadowBlur = 0;
 
       if (electromagneticLaserSheet.complete && electromagneticLaserSheet.naturalWidth !== 0) {
         const sw = electromagneticLaserSheet.naturalWidth;
@@ -461,10 +503,10 @@ export class Projectile {
       const sourceRadius = beamHeight * (isPlasmaRail ? 0.72 : 0.62);
       const sourceColor = isPlasmaRail ? '#ff72ff' : '#00efff';
       ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = Math.max(0.48, alpha);
       ctx.shadowColor = sourceColor;
-      ctx.shadowBlur = visualProfile.glowBlur + 8;
+      ctx.shadowBlur = 0;
 
       ctx.fillStyle = '#efffff';
       ctx.beginPath();
@@ -473,18 +515,11 @@ export class Projectile {
 
       ctx.strokeStyle = sourceColor;
       ctx.lineCap = 'round';
-      for (let ring = 0; ring < 2; ring++) {
-        ctx.globalAlpha = Math.max(0.22, alpha * (0.72 - ring * 0.22));
-        ctx.lineWidth = Math.max(2, sourceRadius * (0.13 - ring * 0.035));
-        ctx.beginPath();
-        ctx.arc(0, 0, sourceRadius * (0.48 + ring * 0.28), 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
       ctx.globalAlpha = Math.max(0.28, alpha * 0.78);
       ctx.lineWidth = Math.max(1.5, sourceRadius * 0.08);
-      for (let spark = 0; spark < 6; spark++) {
-        const sparkAngle = (Math.PI * 2 * spark) / 6 + elapsed * 0.018;
+      const sourceSparkCount = renderQuality < 0.6 ? 3 : renderQuality < 0.85 ? 4 : 6;
+      for (let spark = 0; spark < sourceSparkCount; spark++) {
+        const sparkAngle = (Math.PI * 2 * spark) / sourceSparkCount + elapsed * 0.018;
         ctx.beginPath();
         ctx.moveTo(
           Math.cos(sparkAngle) * sourceRadius * 0.46,
@@ -516,7 +551,7 @@ export class Projectile {
         ctx.rotate(Math.sin(elapsed / 420) * 0.08);
         ctx.globalAlpha = 0.92;
         ctx.shadowColor = '#ff7a00';
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = 0;
         ctx.drawImage(
           firePatchSheet,
           col * sw,
@@ -537,7 +572,6 @@ export class Projectile {
         ctx.beginPath();
         ctx.arc(0, 0, this.splashRadius * pulse, 0, Math.PI * 2);
         ctx.fill();
-        ctx.stroke();
       }
       ctx.restore();
       return;
@@ -545,9 +579,7 @@ export class Projectile {
 
     const iconImg = getProjectileIconImage(this.id);
     if (iconImg.complete && iconImg.naturalWidth !== 0) {
-      const accentColor = getWeaponAccentColor(this.id, this.behavior, this.effectVariant);
-      ctx.shadowColor = accentColor;
-      ctx.shadowBlur = visualProfile.glowBlur;
+      ctx.shadowBlur = 0;
       const drawSize = this.behavior === 'mine'
         ? visualProfile.drawSize + 10
         : visualProfile.drawSize;
@@ -556,29 +588,6 @@ export class Projectile {
         ctx.scale(pulse, pulse);
       }
       ctx.drawImage(iconImg, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
-      if (this.effectVariant) {
-        ctx.globalCompositeOperation = 'source-atop';
-        ctx.globalAlpha = 0.28;
-        ctx.fillStyle = accentColor;
-        ctx.fillRect(-drawSize / 2, -drawSize / 2, drawSize, drawSize);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;
-      }
-      if (visualProfile.rank >= 4) {
-        ctx.globalAlpha = 0.72;
-        ctx.strokeStyle = accentColor;
-        ctx.lineWidth = Math.max(2, visualProfile.rank - 2);
-        ctx.beginPath();
-        ctx.arc(0, 0, drawSize * 0.62, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      if (this.behavior === 'mine') {
-        ctx.strokeStyle = 'rgba(255, 170, 0, 0.65)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.radius + 4, 0, Math.PI * 2);
-        ctx.stroke();
-      }
       ctx.restore();
       return;
     }
@@ -597,13 +606,10 @@ export class Projectile {
       ctx.fillText(this.symbol, -5, 5);
     } else if (this.type === 'pierce') {
       // Laser / Spear / Chakram
-      ctx.strokeStyle = '#00ffff';
       ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
-      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
 
       ctx.font = '14px Arial';
       ctx.fillText(this.symbol, -7, 5);
@@ -620,7 +626,7 @@ export class Projectile {
       // Homing / Magic
       ctx.fillStyle = '#ff00ff';
       ctx.shadowColor = '#ff00ff';
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 0;
       ctx.beginPath();
       ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
       ctx.fill();

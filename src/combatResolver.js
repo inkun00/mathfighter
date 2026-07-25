@@ -18,8 +18,14 @@ export function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function isWithinDistance(a, b, distance) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy < distance * distance;
+}
+
 export function circlesOverlap(a, b) {
-  return distanceBetween(a, b) < a.radius + b.radius;
+  return isWithinDistance(a, b, a.radius + b.radius);
 }
 
 export function getDistanceToSegment(px, py, ax, ay, bx, by) {
@@ -68,8 +74,10 @@ function applyMonsterSplash({
 }) {
   monsters.forEach(monster => {
     if (monster === excludedMonster || monster.hp <= 0) return;
-    if (distanceBetween(monster, projectile) >= projectile.splashRadius) return;
+    if (projectile.hitTargets?.has(monster)) return;
+    if (!isWithinDistance(monster, projectile, projectile.splashRadius)) return;
 
+    projectile.hitTargets?.add(monster);
     applyProjectileImpact(monster, projectile, damageScale);
     onHitEffect(monster.x, monster.y, projectile, hitEffectScale);
     defeatMonsterIfNeeded(monster, onMonsterDefeat);
@@ -119,7 +127,7 @@ function resolveGravityWell(projectile, monsters, boss, now, onMonsterDefeat, on
 
   monsters.forEach(monster => {
     if (monster.hp <= 0) return;
-    if (distanceBetween(monster, projectile) >= monster.radius + projectile.splashRadius) return;
+    if (!isWithinDistance(monster, projectile, monster.radius + projectile.splashRadius)) return;
 
     applyProjectileImpact(monster, projectile, 0.22);
     onHitEffect(monster.x, monster.y, projectile, 0.7);
@@ -127,24 +135,29 @@ function resolveGravityWell(projectile, monsters, boss, now, onMonsterDefeat, on
   });
 
   if (!canDamageBoss(boss)) return;
-  if (distanceBetween(boss, projectile) >= boss.radius + projectile.splashRadius) return;
+  if (!isWithinDistance(boss, projectile, boss.radius + projectile.splashRadius)) return;
   boss.takeDamage(projectile.dmg * 0.16);
   onHitEffect(boss.x, boss.y, projectile, 0.85);
 }
 
 function applyChainLightning(projectile, primary, monsters, onMonsterDefeat, onHitEffect) {
   const chainedTargets = monsters
-    .filter(monster => (
+    .map(monster => {
+      const dx = primary.x - monster.x;
+      const dy = primary.y - monster.y;
+      return { monster, distanceSquared: dx * dx + dy * dy };
+    })
+    .filter(({ monster, distanceSquared }) => (
       monster !== primary &&
       monster.hp > 0 &&
       !projectile.hitTargets?.has(monster) &&
-      distanceBetween(primary, monster) < 220
+      distanceSquared < 220 * 220
     ))
-    .sort((a, b) => distanceBetween(primary, a) - distanceBetween(primary, b))
+    .sort((a, b) => a.distanceSquared - b.distanceSquared)
     .slice(0, 5);
 
   let chainOrigin = primary;
-  chainedTargets.forEach((monster, index) => {
+  chainedTargets.forEach(({ monster }, index) => {
     projectile.hitTargets?.add(monster);
     applyProjectileImpact(monster, projectile, Math.max(0.38, 0.72 - index * 0.08));
     onHitEffect(monster.x, monster.y, projectile, 0.8 - index * 0.08, {
@@ -160,7 +173,7 @@ function resolveFirePatch(projectile, monsters, boss, now, onMonsterDefeat, onHi
 
   monsters.forEach(monster => {
     if (monster.hp <= 0) return;
-    if (distanceBetween(monster, projectile) >= monster.radius + projectile.splashRadius) return;
+    if (!isWithinDistance(monster, projectile, monster.radius + projectile.splashRadius)) return;
 
     applyProjectileImpact(monster, projectile, projectile.id >= 22 ? 0.32 : 0.22);
     onHitEffect(monster.x, monster.y, projectile, 0.45);
@@ -168,7 +181,7 @@ function resolveFirePatch(projectile, monsters, boss, now, onMonsterDefeat, onHi
   });
 
   if (!canDamageBoss(boss)) return;
-  if (distanceBetween(boss, projectile) >= boss.radius + projectile.splashRadius) return;
+  if (!isWithinDistance(boss, projectile, boss.radius + projectile.splashRadius)) return;
 
   boss.takeDamage(projectile.dmg * (projectile.id >= 22 ? 0.24 : 0.16));
   onHitEffect(boss.x, boss.y, projectile, 0.65);

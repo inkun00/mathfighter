@@ -5,6 +5,9 @@ import {
   getWeaponBalanceMetrics,
   getWeaponBehavior,
   getWeaponFireStyleLabel,
+  getWeaponPatternProfile,
+  getWeaponRange,
+  getWeaponRangeLabel,
   getWeaponVisualProfile
 } from '../src/weaponProfiles.js';
 
@@ -49,6 +52,34 @@ test('gives every legendary weapon a distinct firing form', () => {
     assert.notEqual(getWeaponFireStyleLabel(weapon.id, weapon.type), '직선 발사');
     assert.ok(behavior.length > 0);
   });
+});
+
+test('uses a multi-projectile parabolic pattern for the smoke grenade launcher', () => {
+  const behavior = getWeaponBehavior(14, 'splash');
+  const pattern = getWeaponPatternProfile(14, behavior, 3);
+
+  assert.equal(behavior, 'smoke_grenade');
+  assert.equal(pattern.count, 4);
+  assert.equal(pattern.damageScale, 0.85);
+});
+
+test('caps sustained projectile counts while preserving total shot power', () => {
+  const shockwave = getWeaponPatternProfile(18, 'shockwave', 3);
+  const orbit = getWeaponPatternProfile(16, 'orbit', 3);
+  const nova = getWeaponPatternProfile(30, 'nova', 3);
+
+  assert.equal(shockwave.count, 8);
+  assert.equal(orbit.count, 4);
+  assert.equal(nova.count, 10);
+  assert.ok(Math.abs(shockwave.count * shockwave.damageScale - 18 * 0.62) < 0.001);
+  assert.ok(Math.abs(orbit.count * orbit.damageScale - 6 * 0.7) < 0.001);
+  assert.ok(Math.abs(nova.count * nova.damageScale - 20 * 0.8) < 0.001);
+});
+
+test('uses long range targeting for the Valkyrie missile launcher', () => {
+  assert.equal(getWeaponBehavior(28, 'homing'), 'missile_swarm');
+  assert.equal(getWeaponRange(28, 'missile_swarm'), 520);
+  assert.equal(getWeaponRangeLabel(28, 'homing'), '장거리');
 });
 
 test('increases projectile and impact spectacle with weapon price', () => {

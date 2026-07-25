@@ -14,6 +14,17 @@ const BACKGROUND_SOURCES = [
   { minStage: 1, src: '/assets/backgrounds/stage_01_academy.webp' }
 ];
 
+const MAX_HIT_EFFECTS = 48;
+const MAX_FIRE_EFFECTS = 24;
+
+export function getCombatRenderQuality(projectileCount = 0, hitEffectCount = 0) {
+  const pressure = Math.max(0, projectileCount) + Math.max(0, hitEffectCount) * 0.75;
+  if (pressure >= 56) return 0.45;
+  if (pressure >= 38) return 0.62;
+  if (pressure >= 24) return 0.8;
+  return 1;
+}
+
 export function createGameRenderer({ getState, getCameraOffset }) {
   const backgrounds = BACKGROUND_SOURCES.map(background => {
     const image = new Image();
@@ -24,6 +35,9 @@ export function createGameRenderer({ getState, getCameraOffset }) {
   let fireEffects = [];
   let textParticles = [];
   const lastAreaImpactTimes = new WeakMap();
+  const lastContinuousImpactTimes = new Map();
+  let hitEffectFrame = -1;
+  let hitEffectsSpawnedThisFrame = 0;
 
   function getStageBackground(stage) {
     return backgrounds.find(background => stage >= background.minStage) || backgrounds.at(-1);
@@ -66,7 +80,9 @@ export function createGameRenderer({ getState, getCameraOffset }) {
   function spawnFireEffect(event) {
     if (!event?.weapon) return;
     fireEffects.push(createWeaponFireEffect(event));
-    if (fireEffects.length > 40) fireEffects.splice(0, fireEffects.length - 40);
+    if (fireEffects.length > MAX_FIRE_EFFECTS) {
+      fireEffects.splice(0, fireEffects.length - MAX_FIRE_EFFECTS);
+    }
   }
 
   function spawnHitEffect(x, y, projectile, scale = 1, details = {}) {
@@ -74,22 +90,55 @@ export function createGameRenderer({ getState, getCameraOffset }) {
     const now = Date.now();
     const effect = createWeaponImpactEffect(x, y, projectile, scale, details);
     const lastAreaImpact = lastAreaImpactTimes.get(projectile) || 0;
-    if (effect.isAreaHit && effect.family !== 'electric' && now - lastAreaImpact < 45) return;
+    if (effect.isAreaHit && effect.family !== 'electric' && now - lastAreaImpact < 72) return;
     if (effect.isAreaHit) lastAreaImpactTimes.set(projectile, now);
+    if (effect.isContinuousImpact) {
+      const impactKey = `${effect.id}:${effect.behavior}`;
+      const lastContinuousImpact = lastContinuousImpactTimes.get(impactKey) || 0;
+      const impactInterval = effect.behavior === 'nova' ? 34 : 45;
+      if (now - lastContinuousImpact < impactInterval) return;
+      lastContinuousImpactTimes.set(impactKey, now);
+    }
+
+    const frame = Math.floor(now / 17);
+    if (frame !== hitEffectFrame) {
+      hitEffectFrame = frame;
+      hitEffectsSpawnedThisFrame = 0;
+    }
+    const projectileCount = getState()?.projectiles?.length || 0;
+    const quality = getCombatRenderQuality(projectileCount, hitEffects.length);
+    const frameEffectLimit = quality <= 0.45 ? 5 : quality < 0.8 ? 7 : 10;
+    if (hitEffectsSpawnedThisFrame >= frameEffectLimit) return;
+
+    hitEffectsSpawnedThisFrame++;
     hitEffects.push(effect);
-    if (hitEffects.length > 90) hitEffects.splice(0, hitEffects.length - 90);
+    if (hitEffects.length > MAX_HIT_EFFECTS) {
+      hitEffects.splice(0, hitEffects.length - MAX_HIT_EFFECTS);
+    }
   }
 
-  function drawHitEffects(ctx) {
+  function isVisible(x, y, radius, camera, canvas) {
+    return (
+      x + radius >= camera.x &&
+      x - radius <= camera.x + canvas.width &&
+      y + radius >= camera.y &&
+      y - radius <= camera.y + canvas.height
+    );
+  }
+
+  function drawHitEffects(ctx, camera, canvas, quality) {
     const now = Date.now();
-    hitEffects.forEach(effect => drawWeaponImpactEffect(ctx, effect, now));
     hitEffects = hitEffects.filter(effect => now - effect.createdTime < effect.lifeTime);
+    hitEffects.forEach(effect => {
+      if (!isVisible(effect.x, effect.y, effect.radius + 30, camera, canvas)) return;
+      drawWeaponImpactEffect(ctx, effect, now, quality);
+    });
   }
 
-  function drawFireEffects(ctx) {
+  function drawFireEffects(ctx, quality) {
     const now = Date.now();
-    fireEffects.forEach(effect => drawWeaponFireEffect(ctx, effect, now));
     fireEffects = fireEffects.filter(effect => now - effect.createdTime < effect.lifeTime);
+    fireEffects.forEach(effect => drawWeaponFireEffect(ctx, effect, now, quality));
   }
 
   function getCameraShake(now) {
@@ -157,6 +206,7 @@ export function createGameRenderer({ getState, getCameraOffset }) {
 
     const camera = getCameraOffset();
     const cameraShake = getCameraShake(Date.now());
+    const renderQuality = getCombatRenderQuality(projectiles.length, hitEffects.length);
     ctx.save();
     ctx.translate(-camera.x + cameraShake.x, -camera.y + cameraShake.y);
     drawStageBackground(ctx, camera, state);
@@ -185,15 +235,20 @@ export function createGameRenderer({ getState, getCameraOffset }) {
     ctx.strokeRect(2, 2, worldWidth - 4, worldHeight - 4);
 
     dropItems.forEach(item => item.draw(ctx));
-    projectiles.forEach(projectile => projectile.draw(ctx));
+    projectiles.forEach(projectile => {
+      const renderRadius = Math.max(projectile.radius || 0, projectile.splashRadius || 0) + 120;
+      const isRail = ['rail_laser', 'plasma_rail'].includes(projectile.behavior);
+      if (!isRail && !isVisible(projectile.x, projectile.y, renderRadius, camera, canvas)) return;
+      projectile.draw(ctx, { quality: renderQuality });
+    });
     monsterProjectiles.forEach(projectile => projectile.draw(ctx));
     monsters.forEach(monster => {
       if (monster.hp > 0) monster.draw(ctx);
     });
     if (player) player.draw(ctx);
     if (boss) boss.draw(ctx);
-    drawFireEffects(ctx);
-    drawHitEffects(ctx);
+    drawFireEffects(ctx, renderQuality);
+    drawHitEffects(ctx, camera, canvas, renderQuality);
 
     textParticles.forEach(particle => {
       particle.y -= 1;
@@ -213,7 +268,23 @@ export function createGameRenderer({ getState, getCameraOffset }) {
     hitEffects = [];
     fireEffects = [];
     textParticles = [];
+    lastContinuousImpactTimes.clear();
   }
 
-  return { draw, resetEffects, spawnFireEffect, spawnHitEffect, spawnTextParticle };
+  function getEffectCounts() {
+    return {
+      hitEffects: hitEffects.length,
+      fireEffects: fireEffects.length,
+      textParticles: textParticles.length
+    };
+  }
+
+  return {
+    draw,
+    getEffectCounts,
+    resetEffects,
+    spawnFireEffect,
+    spawnHitEffect,
+    spawnTextParticle
+  };
 }

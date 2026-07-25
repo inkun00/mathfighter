@@ -4,7 +4,7 @@ const SPECIAL_BEHAVIORS = new Map([
   [8, 'cone_blast'],
   [11, 'cone_blast'],
   [13, 'rail_laser'],
-  [14, 'mine'],
+  [14, 'smoke_grenade'],
   [16, 'orbit'],
   [17, 'throw_fire'],
   [18, 'shockwave'],
@@ -49,25 +49,44 @@ export function getWeaponTierMultiplier(id) {
   return 1;
 }
 
+function capPattern(desiredCount, maxCount, damageScale) {
+  const count = Math.min(desiredCount, maxCount);
+  return {
+    count,
+    damageScale: Number((damageScale * desiredCount / count).toFixed(3))
+  };
+}
+
 export function getWeaponPatternProfile(id, behavior, projectileBonus = 0) {
   if (['cone_blast', 'dash_wave'].includes(behavior)) {
-    return {
-      count: (id >= 21 ? 9 : id >= 11 ? 7 : 5) + projectileBonus,
-      damageScale: id >= 21 ? 0.7 : 0.62
-    };
+    const desiredCount = (id >= 21 ? 9 : id >= 11 ? 7 : 5) + projectileBonus;
+    return capPattern(desiredCount, 8, id >= 21 ? 0.7 : 0.62);
   }
   if (['spread', 'elemental_burst', 'missile_swarm'].includes(behavior)) {
-    return {
-      count: (id >= 28 ? 8 : id >= 19 ? 5 : 3) + projectileBonus,
-      damageScale: id === 12 ? 0.82 : id >= 28 ? 0.72 : 0.65
-    };
+    const desiredCount = (id >= 28 ? 8 : id >= 19 ? 5 : 3) + projectileBonus;
+    return capPattern(desiredCount, 8, id === 12 ? 0.82 : id >= 28 ? 0.72 : 0.65);
   }
-  if (behavior === 'shockwave') return { count: 12 + projectileBonus * 2, damageScale: 0.62 };
-  if (behavior === 'nova') return { count: 14 + projectileBonus * 2, damageScale: 0.8 };
-  if (behavior === 'orbit') return { count: 3 + projectileBonus, damageScale: 0.7 };
-  if (behavior === 'mine') return { count: 1 + projectileBonus, damageScale: 0.85 };
+  if (behavior === 'shockwave') {
+    return capPattern(12 + projectileBonus * 2, 8, 0.62);
+  }
+  if (behavior === 'nova') {
+    return capPattern(14 + projectileBonus * 2, 10, 0.8);
+  }
+  if (behavior === 'orbit') {
+    return capPattern(3 + projectileBonus, 4, 0.7);
+  }
+  if (behavior === 'mine') {
+    return capPattern(1 + projectileBonus, 4, 0.85);
+  }
+  if (behavior === 'smoke_grenade') {
+    return capPattern(1 + projectileBonus, 4, 0.85);
+  }
   if (behavior === 'throw_fire') {
-    return { count: (id >= 22 ? 3 : 1) + projectileBonus, damageScale: id >= 22 ? 0.95 : 1 };
+    return capPattern(
+      (id >= 22 ? 3 : 1) + projectileBonus,
+      4,
+      id >= 22 ? 0.95 : 1
+    );
   }
   return { count: 1, damageScale: 1 };
 }
@@ -134,11 +153,13 @@ export function getWeaponVisualProfile(id) {
 export function getWeaponRange(id, behavior) {
   if (['rail_laser', 'plasma_rail'].includes(behavior)) return 1600;
   if (behavior === 'gravity_well') return 280;
+  if (behavior === 'smoke_grenade') return 230;
   if (behavior === 'throw_fire') return id >= 22 ? 240 : 180;
   if (['cone_blast', 'dash_wave'].includes(behavior)) return id >= 21 ? 250 : 210;
   if (behavior === 'shockwave') return 250;
   if (behavior === 'nova') return 340;
-  if (['spread', 'elemental_burst', 'missile_swarm'].includes(behavior)) return 280;
+  if (behavior === 'missile_swarm') return 520;
+  if (['spread', 'elemental_burst'].includes(behavior)) return 280;
   if (behavior === 'orbit') return 170;
   if (behavior === 'mine') return 150;
   if (['pierce', 'void_pierce'].includes(behavior)) return id >= 24 ? 560 : 450;
@@ -156,6 +177,7 @@ export function getWeaponFireStyleLabel(id, type) {
     cone_blast: '부채꼴 파동',
     rail_laser: '화면 관통 레이저',
     mine: '지연 폭발 지뢰',
+    smoke_grenade: '포물선 연막 유탄',
     orbit: '회전 궤도탄',
     shockwave: '전방위 충격파',
     chain_lightning: '연쇄 번개',
@@ -175,7 +197,8 @@ export function getWeaponFireStyleLabel(id, type) {
 export function getWeaponRangeLabel(id, type) {
   const behavior = getWeaponBehavior(id, type);
   if (['rail_laser', 'plasma_rail'].includes(behavior)) return '화면 끝';
-  if (['throw_fire', 'cone_blast', 'dash_wave', 'mine', 'gravity_well', 'nova'].includes(behavior)) return '근거리';
-  if (['spread', 'elemental_burst', 'missile_swarm', 'orbit', 'shockwave'].includes(behavior)) return '중거리';
+  if (behavior === 'missile_swarm') return '장거리';
+  if (['throw_fire', 'cone_blast', 'dash_wave', 'mine', 'smoke_grenade', 'gravity_well', 'nova'].includes(behavior)) return '근거리';
+  if (['spread', 'elemental_burst', 'orbit', 'shockwave'].includes(behavior)) return '중거리';
   return '장거리';
 }
